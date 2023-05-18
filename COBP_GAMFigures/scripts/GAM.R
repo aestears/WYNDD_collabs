@@ -49,7 +49,13 @@ dat_creeks <- dat_creeks %>%
     cols = c(CrowCreek, DiamondCreek, UnnamedCreek, Total), 
     names_to = "Creek",
     values_to = "popSize"
-  )
+  ) %>% 
+  mutate(Creek = as.factor(Creek))
+
+dat_creeks <- dat_creeks[dat_creeks$Creek != "Total",]
+
+# remove NAs 
+dat_creeks <- dat_creeks[!is.na(dat_creeks$popSize),]
 
 ## load creek segment-level data
 dat_seg <- read_excel("./COBP_GAMFigures/data/COBP_wafb_2022.xlsx", sheet =2)
@@ -62,10 +68,97 @@ dat_seg <- dat_seg %>%
          popSize = as.integer(popSize))
 dat_seg <- dat_seg[is.na(dat_seg$Segment)==FALSE,]
 
+dat_seg <- dat_seg[!(dat_seg$Segment %in% c("Crow", "Diamond", "Unnamed", "Total")),]
 
-# Fit heirarchical GAM --------------------------------------------------------------
+# add a column for creek type 
+dat_seg$Creek <- NA
+dat_seg[dat_seg$Segment %in% c("C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"), "Creek"] <- "CrowCreek"
+dat_seg[dat_seg$Segment %in% c("D1", "D2", "D3", "D4", "D5"), "Creek"] <- "DiamondCreek"
+dat_seg[dat_seg$Segment %in% c("U1", "U2"), "Creek"] <- "UnnamedCreek"
+
+# remove the year(s) w/ NA
+dat_seg <- dat_seg[!is.na(dat_seg$popSize),]
+
+dat_seg$Creek <- as.factor(dat_seg$Creek)
+dat_seg$Segment <- as.factor(dat_seg$Segment)
+
+# Fit hierarchical GAM --------------------------------------------------------------
 # based on advice from Pedersen et. al, 2019
-# fit a model that is consitent with model "I" from this paper 
-# i.e. Group-specific smoothers with different wiggliness. 
+## start by fitting all types of models w/ global vs. non-global smoothers as well as same and different amounts of wigliness
+
+## model w/ global smoother and same wigliness (model "G" from the paper)
+# with a random effect for creek 
+mod_G <- gam(popSize ~ s(Year, k = 15, bs = "tp") + 
+               s(Creek, bs = "re") ,
+             data = dat_creeks, method = "REML", family = "poisson")
+
+# check model
+gam.check(mod_G)
+gratia::draw(mod_G)
+
+# setup prediction data
+mod_G_pred <- with(dat_seg,
+                   expand.grid(Year = unique(dat_seg$Year),
+                               Creek = levels(dat_seg$Creek)
+                   ))
+
+#  make the prediction, add this and a column of standard errors to the prediction
+# data.frame. Predictions are on the log scale.
+mod_G_pred <- cbind(mod_G_pred,
+                    predict(mod_G, 
+                            mod_G_pred, 
+                            se.fit=TRUE, 
+                            type="response"))
+
+# make the plot. Note here the use of the exp() function to back-transform the
+# predictions (which are for log-uptake) to the original scale
+ggplot() +
+  facet_wrap(~Creek) +
+  geom_ribbon(aes(ymin=(fit - 2*se.fit), ymax=(fit + 2*se.fit), x=Year),
+              data=mod_G_pred,
+              alpha=0.3,
+              inherit.aes=FALSE) +
+  geom_line(aes(x = Year, y=fit), data=mod_G_pred) +
+  geom_point(data=dat_creeks, aes(x=Year, y=popSize)) +
+  labs(x="Year",
+       y="Population Size")
 
 
+## A single common smoother plus group-level smoothers that have the same wiggliness (model "GS" from the paper)
+mod_GS <- gam(popSize ~ s(Year, k = 15, m = 2) + 
+                s(Year, Creek, k = 5, bs = "fs", m = 2),
+             data = dat_creeks, method = "REML", family = "poisson")
+
+
+mod_GS <- gam(log(uptake) ~ s(log(conc), k=5, m=2) + 
+                   s(log(conc), Plant_uo, k=5,  bs="fs", m=2),
+                 data=CO2, method="REML")
+gam.check(mod_GS)
+gratia::draw(mod_GS)
+
+
+mod_GS_pred <- predict(mod_GS, se.fit=TRUE, type = "response")
+
+mod_GS_pred <- transform(dat_creeks, 
+                 modGS = mod_GS_pred$fit, 
+                 modGS_se = mod_GS_pred$se.fit)
+
+ggplot() +
+  facet_wrap(~Creek) +
+  geom_ribbon(aes(ymin=(modGS - 2*modGS_se), ymax=(modGS + 2*modGS_se), x=Year),
+              data=mod_GS_pred,
+              alpha=0.3,
+              inherit.aes=FALSE) +
+  geom_line(aes(x = Year, y=modGS), data=mod_GS_pred) +
+  geom_point(data=dat_creeks, aes(x=Year, y=popSize)) +
+  labs(x="Year",
+       y="Population Size")
+
+ggplot(data=CO2, aes(x=conc, y=uptake, group=Plant_uo)) +
+  facet_wrap(~Plant_uo) +
+  geom_ribbon(aes(ymin=exp(modGS-2*modGS_se),
+                  ymax=exp(modGS+2*modGS_se)), alpha=0.25) +
+  geom_line(aes(y=exp(modGS))) +
+  geom_point() +
+  labs(x=expression(CO[2] ~ concentration ~ (mL ~ L^{-1})),
+       y=expression(CO[2] ~ uptake ~ (mu*mol ~ m^{-2})))
