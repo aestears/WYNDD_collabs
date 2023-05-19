@@ -387,6 +387,21 @@ pdat_Crow$decr_sig <- unlist(m2.dsig$decr)
 predDat <- rbind(pdat_Crow, pdat_Diamond, pdat_Unnamed)
 predDat$Creek <- as.factor(predDat$Creek)
 
+predDat <- predDat %>% 
+  left_join(dat_creeks[,c("Year", "Creek", "popSize")], by = c("Year", "Creek"))
+
+temp <- predDat %>% 
+  group_by(Creek) %>% 
+  summarize(maxPop = max(popSize),
+            maxInt = max(upper))
+
+temp$maxY <- apply(temp, MARGIN = 1, FUN = function(x)
+  as.integer(max(x[2:3]))
+)
+
+predDat <- predDat %>% 
+  left_join(temp[,c("Creek", "maxY")], by = "Creek")
+
 # make a plot with the significant increases or decreases
 byCreek_figure <- ggplot() +
     geom_ribbon(aes(ymin=lower, ymax=upper, x=Year),
@@ -399,9 +414,10 @@ byCreek_figure <- ggplot() +
     geom_line(aes(x = Year, y = incr_sig), data = predDat, col = "royalblue", lwd = 1.5, alpha = .9) + 
     geom_line(aes(x = Year, y = decr_sig), data = predDat, col = "tomato", lwd = 1.5) +
     geom_line(aes(x = Year, y=p2), data=predDat) + 
-    facet_wrap(.~ Creek, ncol = 1) +#, scales = "free_y") +
-    geom_text(aes(x = 2021, y = 7500, label = paste0("%d = ",round(pDev,1))), data = predDat, size = 3) +
+    facet_wrap(.~ Creek, ncol = 1, scales = "free_y") +
+    geom_text(aes(x = 2021, y = maxY*.95, label = paste0("%d = ",round(pDev,1))), data = predDat, size = 3) +
     theme_minimal() +
+    ylim(c(0,NA)) +
     theme(strip.background = element_rect(fill = "lightgrey"),
           strip.text = element_text(size = 10, face = "bold"))
   #geom_smooth(aes(x = Year, y = popSize), data = dat_Diamond, method = "gam", method.args = list(family = "nb"))
@@ -537,11 +553,22 @@ for (i in 1:length(unique(dat_seg$Segment))) {
 ## add actual data to the same data.frame
 pdat_allSegs <- pdat_allSegs %>% 
   left_join(dat_seg, by = c("Year", "Segment"))
-pdat_allSegs$max
+
+temp <- pdat_allSegs %>% 
+  group_by(Segment) %>% 
+  summarize(maxPop = max(popSize),
+            maxInt = max(upper))
+
+temp$maxY <- apply(temp, MARGIN = 1, FUN = function(x)
+  as.integer(max(x[2:3]))
+)
+
+pdat_allSegs <- pdat_allSegs %>% 
+  left_join(temp[,c("Segment", "maxY")], by = "Segment")
 
 ## put as a figure
 # make a plot with the significant increases or decreases
-#bySegment_figure <- 
+bySegment_figure <- 
   ggplot() +
   geom_ribbon(aes(ymin=lower, ymax=upper, x=Year),
               data=pdat_allSegs,
@@ -554,7 +581,7 @@ pdat_allSegs$max
   geom_line(aes(x = Year, y = decr_sig), data = pdat_allSegs, col = "tomato", lwd = 1.5) +
   geom_line(aes(x = Year, y=p2), data=pdat_allSegs) + 
   facet_wrap(.~ Segment, scales = "free_y") +
-  geom_text(aes(x = 2021, y = max(popSize), label = paste0("%d = ",round(pDev,1))), 
+  geom_text(aes(x = 2018, y = maxY*.95, label = paste0("%d = ",round(pDev,0))), 
             data = pdat_allSegs, size = 3) +
   theme_minimal() +
   theme(strip.background = element_rect(fill = "lightgrey"),
@@ -562,5 +589,7 @@ pdat_allSegs$max
   ylim(c(-2.8,NA))
   
 # save to file
-ggsave(filename = "byCreek_GAM_figure.pdf", plot = byCreek_figure, device = "pdf", path = "./COBP_GAMFigures/")
+ggsave(filename = "bySegment_GAM_figure.pdf", plot = bySegment_figure, 
+       device = "pdf", path = "./COBP_GAMFigures/",
+       height = 8, width = 8)
 
