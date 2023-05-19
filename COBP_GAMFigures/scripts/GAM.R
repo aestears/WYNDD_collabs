@@ -32,11 +32,11 @@ library(readxl)
 # Load data ---------------------------------------------------------------
 ## load creek-level data
 dat_creeks <- read_excel("./COBP_GAMFigures/data/COBP_wafb_2022.xlsx", sheet =1) %>% 
-  rename(CrowCreek = `Crow Cr`, DiamondCreek = `Diamond Cr`, UnnamedCreek = `Unnamed Cr`, Total =  `WAFB (Total)`, Notes =  ...6 ) %>% 
+  rename(`Crow Creek` = `Crow Cr`, `Diamond Creek` = `Diamond Cr`, `Unnamed Creek` = `Unnamed Cr`, Total =  `WAFB (Total)`, Notes =  ...6 ) %>% 
   filter(Year != "av") %>% 
-  mutate(CrowCreek = as.integer(CrowCreek),
-         DiamondCreek = as.integer(DiamondCreek), 
-         UnnamedCreek = as.integer(UnnamedCreek), 
+  mutate(CrowCreek = as.integer(`Crow Creek`),
+         DiamondCreek = as.integer(`Diamond Creek`), 
+         UnnamedCreek = as.integer(`Unnamed Creek`), 
          Total = as.integer(Total)) 
 # replace asterisks by 2007 and 2008 (not sure what they mean?)
 dat_creeks[dat_creeks$Year %in% c("2007*", "2008*"),"Year"] <- c("2007", "2008")
@@ -46,7 +46,7 @@ dat_creeks <- dat_creeks %>%
     Year = as.integer(Year)
   ) %>% 
   pivot_longer(
-    cols = c(CrowCreek, DiamondCreek, UnnamedCreek, Total), 
+    cols = c(`Crow Creek`, `Diamond Creek`, `Unnamed Creek`, Total), 
     names_to = "Creek",
     values_to = "popSize"
   ) %>% 
@@ -72,9 +72,9 @@ dat_seg <- dat_seg[!(dat_seg$Segment %in% c("Crow", "Diamond", "Unnamed", "Total
 
 # add a column for creek type 
 dat_seg$Creek <- NA
-dat_seg[dat_seg$Segment %in% c("C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"), "Creek"] <- "CrowCreek"
-dat_seg[dat_seg$Segment %in% c("D1", "D2", "D3", "D4", "D5"), "Creek"] <- "DiamondCreek"
-dat_seg[dat_seg$Segment %in% c("U1", "U2"), "Creek"] <- "UnnamedCreek"
+dat_seg[dat_seg$Segment %in% c("C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"), "Creek"] <- "Crow Creek"
+dat_seg[dat_seg$Segment %in% c("D1", "D2", "D3", "D4", "D5"), "Creek"] <- "Diamond Creek"
+dat_seg[dat_seg$Segment %in% c("U1", "U2"), "Creek"] <- "Unnamed Creek"
 
 # remove the year(s) w/ NA
 dat_seg <- dat_seg[!is.na(dat_seg$popSize),]
@@ -239,35 +239,35 @@ AIC(mod_G, mod_S, mod_I, mod_GS, mod_GI)
 
 # Make models by creek ----------------------------------------------------
 ## Crow Creek
-dat_Crow <- dat_creeks[dat_creeks$Creek == "CrowCreek",]
+dat_Crow <- dat_creeks[dat_creeks$Creek == "Crow Creek",]
 
 # make model with gamm() and calculate confidence intervals
-mod_Crow <- gamm(popSize ~  
-                   s(Year, k = 15, bs = "ts"),
+mod_Crow <- gam(popSize ~  
+                   s(Year, k = 15),
                  data = dat_Crow, method = "REML", family = "poisson")
 # check for overdispersion
-sum(residuals(mod_Crow$gam, type = "pearson")^2) / df.residual(mod_Crow$gam)
+sum(residuals(mod_Crow, type = "pearson")^2) / df.residual(mod_Crow)
 # try again with negative binomial model
-mod_Crow <- gamm(popSize ~  
-                   s(Year, k = 15, bs = "ts"),
+mod_Crow <- gam(popSize ~  
+                   s(Year, k = 15),
                  data = dat_Crow, method = "REML", family = "nb")
 # check for overdispersion
-sum(residuals(mod_Crow$gam, type = "pearson")^2) / df.residual(mod_Crow$gam)
+sum(residuals(mod_Crow, type = "pearson")^2) / df.residual(mod_Crow)
 # now underdispersed, but better? 
 
 
 # waaay overdispersed, try a negative binomial 
 want <- seq(1, nrow(dat_Crow), length.out = 36)
 
-pdat <- with(dat_Crow,
+pdat_Crow <- with(dat_Crow,
              data.frame(Year = Year[want]))
 
-p2 <- predict(mod_Crow$gam, newdata = pdat, type = "response", se.fit = TRUE)
-pdat <- transform(pdat, p2 = p2$fit, se2 = p2$se.fit)
+p2 <- predict(mod_Crow, newdata = pdat_Crow, type = "response", se.fit = TRUE)
+pdat_Crow <- transform(pdat_Crow, p2 = p2$fit, se2 = p2$se.fit)
 
-df.res <- df.residual(mod_Crow$gam)
+df.res <- df.residual(mod_Crow)
 crit.t <- qt(0.025, df.res, lower.tail = FALSE)
-pdat <- transform(pdat,
+pdat_Crow <- transform(pdat_Crow,
                   upper = p2 + (crit.t * se2),
                   lower = p2 - (crit.t * se2))
 
@@ -283,29 +283,196 @@ pdat <- transform(pdat,
 Term <- "Year"
 m2.d <- Deriv(mod_Crow, n = 36)
 m2.dci <- confint(m2.d, term = Term)
-m2.dsig <- signifD(pdat$p2, d = m2.d[[Term]]$deriv,
+m2.dsig <- signifD(pdat_Crow$p2, d = m2.d[[Term]]$deriv,
                      +                    m2.dci[[Term]]$upper, m2.dci[[Term]]$lower)
-# add significant trend data to the pdat data.frame
-pdat$incr_sig <- unlist(m2.dsig$incr)
-pdat$decr_sig <- unlist(m2.dsig$decr)
+# add significant trend data to the pdat_Crow data.frame
+pdat_Crow$incr_sig <- unlist(m2.dsig$incr)
+pdat_Crow$decr_sig <- unlist(m2.dsig$decr)
+
+## Unnamed Creek
+  dat_Unnamed <- dat_creeks[dat_creeks$Creek == "Unnamed Creek",]
+  
+  # make model with gamm() and calculate confidence intervals
+  mod_Unnamed <- gam(popSize ~  
+                     s(Year, k = 15),
+                   data = dat_Unnamed, method = "REML", family = "poisson")
+  # check for overdispersion
+  sum(residuals(mod_Unnamed, type = "pearson")^2) / df.residual(mod_Unnamed)
+  # try again with negative binomial model
+  mod_Unnamed <- gam(popSize ~  
+                     s(Year, k = 15),
+                   data = dat_Unnamed, method = "REML", family = "nb")
+  # check for overdispersion
+  sum(residuals(mod_Unnamed, type = "pearson")^2) / df.residual(mod_Unnamed)
+  # now underdispersed, but better? 
+  
+  
+  want <- seq(1, nrow(dat_Unnamed), length.out = 36)
+  
+  pdat_Unnamed <- with(dat_Unnamed,
+               data.frame(Year = Year[want]))
+  
+  p2 <- predict(mod_Unnamed, newdata = pdat_Unnamed, type = "response", se.fit = TRUE)
+  pdat_Unnamed <- transform(pdat_Unnamed, p2 = p2$fit, se2 = p2$se.fit)
+  
+  df.res <- df.residual(mod_Unnamed)
+  crit.t <- qt(0.025, df.res, lower.tail = FALSE)
+  pdat_Unnamed <- transform(pdat_Unnamed,
+                    upper = p2 + (crit.t * se2),
+                    lower = p2 - (crit.t * se2))
+
+  # estimate second derivatives
+  Term <- "Year"
+  m2.d <- Deriv(mod_Unnamed, n = 36)
+  m2.dci <- confint(m2.d, term = Term)
+  m2.dsig <- signifD(pdat_Unnamed$p2, d = m2.d[[Term]]$deriv,
+                     +                    m2.dci[[Term]]$upper, m2.dci[[Term]]$lower)
+  # add significant trend data to the pdat_Unnamed data.frame
+  pdat_Unnamed$incr_sig <- unlist(m2.dsig$incr)
+  pdat_Unnamed$decr_sig <- unlist(m2.dsig$decr)
+  
+## Diamond Creek
+  dat_Diamond <- dat_creeks[dat_creeks$Creek == "Diamond Creek",]
+  
+  # make model with gamm() and calculate confidence intervals
+  mod_Diamond <- gam(popSize ~  
+                     s(Year, k = 15),
+                   data = dat_Diamond, method = "REML", family = "poisson")
+  # check for overdispersion
+  sum(residuals(mod_Diamond, type = "pearson")^2) / df.residual(mod_Diamond)
+  # try again with negative binomial model
+  mod_Diamond <- gam(popSize ~  
+                     s(Year, k = 15),
+                   data = dat_Diamond, method = "REML", family = "nb",
+                   niterPQL = 50)
+  # check for overdispersion
+  sum(residuals(mod_Diamond, type = "pearson")^2) / df.residual(mod_Diamond)
+  # now underdispersed, but better? 
+  
+  # waaay overdispersed, try a negative binomial 
+  want <- seq(1, nrow(dat_Diamond), length.out = 36)
+  
+  pdat_Diamond <- with(dat_Diamond,
+               data.frame(Year = Year[want]))
+  
+  p2 <- predict(mod_Diamond, newdata = pdat_Diamond, type = "response", se.fit = TRUE)
+  pdat_Diamond <- transform(pdat_Diamond, p2 = p2$fit, se2 = p2$se.fit)
+  
+  df.res <- df.residual(mod_Diamond)
+  crit.t <- qt(0.025, df.res, lower.tail = FALSE)
+  pdat_Diamond <- transform(pdat_Diamond,
+                    upper = p2 + (crit.t * se2),
+                    lower = p2 - (crit.t * se2))
+
+  # estimate second derivatives
+  Term <- "Year"
+  m2.d <- Deriv(mod_Diamond, n = 36)
+  m2.dci <- confint(m2.d, term = Term)
+  m2.dsig <- signifD(pdat_Diamond$p2, d = m2.d[[Term]]$deriv,
+                     +                    m2.dci[[Term]]$upper, m2.dci[[Term]]$lower)
+  # add significant trend data to the pdat_Diamond data.frame
+  pdat_Diamond$incr_sig <- unlist(m2.dsig$incr)
+  pdat_Diamond$decr_sig <- unlist(m2.dsig$decr)
+
+## put all of the data into on DF
+  # add creek name
+  pdat_Crow$Creek <-  "Crow Creek"
+  pdat_Diamond$Creek <-  "Diamond Creek"
+  pdat_Unnamed$Creek <- "Unnamed Creek"
+  # add % deviance explained
+  pdat_Crow$pDev <- summary(mod_Crow)$dev.expl * 100
+  pdat_Diamond$pDev <- summary(mod_Diamond)$dev.expl * 100
+  pdat_Unnamed$pDev <- summary(mod_Unnamed)$dev.expl * 100
+
+predDat <- rbind(pdat_Crow, pdat_Diamond, pdat_Unnamed)
+predDat$Creek <- as.factor(predDat$Creek)
 
 # make a plot with the significant increases or decreases
-#plot_Crow  <- 
-  ggplot() +
+byCreek_figure <- ggplot() +
+    geom_ribbon(aes(ymin=lower, ymax=upper, x=Year),
+                data=predDat,
+                alpha=0.3,
+                inherit.aes=FALSE) +
+    geom_point(data=dat_creeks, aes(x=Year, y=popSize)) +
+    labs(x="Year",
+         y="Number of Individuals") + 
+    geom_line(aes(x = Year, y = incr_sig), data = predDat, col = "royalblue", lwd = 1.5, alpha = .9) + 
+    geom_line(aes(x = Year, y = decr_sig), data = predDat, col = "tomato", lwd = 1.5) +
+    geom_line(aes(x = Year, y=p2), data=predDat) + 
+    facet_wrap(.~ Creek, ncol = 1) +#, scales = "free_y") +
+    geom_text(aes(x = 2021, y = 7500, label = paste0("%d = ",round(pDev,1))), data = predDat, size = 3) +
+    theme_minimal() +
+    theme(strip.background = element_rect(fill = "lightgrey"),
+          strip.text = element_text(size = 10, face = "bold"))
+  #geom_smooth(aes(x = Year, y = popSize), data = dat_Diamond, method = "gam", method.args = list(family = "nb"))
+  
+# save to file
+  ggsave(filename = "byCreek_GAM_figure.pdf", plot = byCreek_figure, device = "pdf", path = "./COBP_GAMFigures/")
+
+
+# Whole-Population Model --------------------------------------------------
+dat_all <- dat_creeks %>%  
+    dplyr::select(c(Year, Creek, popSize)) %>% 
+    group_by(Year) %>% 
+    summarize(popSize = sum(popSize))
+    
+
+# make model with gamm() and calculate confidence intervals
+mod_all <- gam(popSize ~  
+                   s(Year, k = 15),
+                 data = dat_all, method = "REML", family = "poisson")
+# check for overdispersion
+sum(residuals(mod_all, type = "pearson")^2) / df.residual(mod_all)
+# is very overdispersed, so use nb 
+mod_all <- gam(popSize ~  
+                 s(Year, k = 15),
+               data = dat_all, method = "REML", family = "nb")
+# check for overdispersion
+sum(residuals(mod_all, type = "pearson")^2) / df.residual(mod_all)
+
+# waaay overdispersed, try a negative binomial 
+want <- seq(1, nrow(dat_all), length.out = 36)
+
+pdat_all <- with(dat_all,
+             data.frame(Year = Year[want]))
+
+p2 <- predict(mod_all, newdata = pdat_all, type = "response", se.fit = TRUE)
+pdat_all <- transform(pdat_all, p2 = p2$fit, se2 = p2$se.fit)
+
+df.res <- df.residual(mod_all)
+crit.t <- qt(0.025, df.res, lower.tail = FALSE)
+pdat_all <- transform(pdat_all,
+                  upper = p2 + (crit.t * se2),
+                  lower = p2 - (crit.t * se2))
+
+# estimate second derivatives
+Term <- "Year"
+m2.d <- Deriv(mod_all, n = 36)
+m2.dci <- confint(m2.d, term = Term)
+m2.dsig <- signifD(pdat_all$p2, d = m2.d[[Term]]$deriv,
+                     +                    m2.dci[[Term]]$upper, m2.dci[[Term]]$lower)
+# add significant trend data to the pdat_all data.frame
+pdat_all$incr_sig <- unlist(m2.dsig$incr)
+pdat_all$decr_sig <- unlist(m2.dsig$decr)
+pdat_all$pDev <- summary(mod_all)$dev.expl * 100
+
+allCreeks_figure <- ggplot() +
   geom_ribbon(aes(ymin=lower, ymax=upper, x=Year),
-              data=pdat,
+              data=pdat_all,
               alpha=0.3,
               inherit.aes=FALSE) +
-  geom_point(data=dat_Crow, aes(x=Year, y=popSize)) +
+  geom_point(data=dat_all, aes(x=Year, y=popSize)) +
   labs(x="Year",
-       y="Population Size") + 
-  theme_classic() +
-  geom_line(aes(x = Year, y = incr_sig), data = pdat, col = "royalblue", lwd = 1.5, alpha = .9) + 
-  geom_line(aes(x = Year, y = decr_sig), data = pdat, col = "tomato", lwd = 1.5) +
-  geom_line(aes(x = Year, y=p2), data=pdat) + 
-  ggtitle("Crow Creek") 
-  #+ geom_smooth(aes(x = Year, y = popSize), data = dat_Crow, method = "gam", method.args = list(family = "nb"))
- 
-
-mod_Crow_gam <- gam(popSize ~  s(Year, k = 10),
-                                     data = dat_Crow, method = "REML", family = "poisson")
+       y="Number of Individuals") + 
+  geom_line(aes(x = Year, y = incr_sig), data = pdat_all, col = "royalblue", lwd = 1.5, alpha = .9) + 
+  geom_line(aes(x = Year, y = decr_sig), data = pdat_all, col = "tomato", lwd = 1.5) +
+  geom_line(aes(x = Year, y=p2), data=pdat_all) + 
+  geom_text(aes(x = 2021, y = 15000, label = paste0("%d = ",round(pDev,1))), data = pdat_all, size = 3) +
+  theme_minimal() +
+  theme(strip.background = element_rect(fill = "lightgrey"),
+        strip.text = element_text(size = 10, face = "bold"))
+  
+# save to file
+ggsave(filename = "allCreeks_GAM_figure.pdf", plot = allCreeks_figure, 
+       device = "pdf", path = "./COBP_GAMFigures/",
+       height = 3, width = 6)
