@@ -476,3 +476,91 @@ allCreeks_figure <- ggplot() +
 ggsave(filename = "allCreeks_GAM_figure.pdf", plot = allCreeks_figure, 
        device = "pdf", path = "./COBP_GAMFigures/",
        height = 3, width = 6)
+
+# Segment-level figures ---------------------------------------------------
+
+for (i in 1:length(unique(dat_seg$Segment))) {
+  # get the name of the ith segment
+  seg_i <- unique(dat_seg$Segment)[i]
+  # get data for that model
+  dat_i <- dat_seg[dat_seg$Segment ==  seg_i,]
+  
+  if (nrow(dat_i) > 30) {
+    k_i <- 15
+  } else if (nrow(dat_i) > 15) {
+    k_i <- 10
+  } else {
+    k_i <- 5
+  }
+  # make the model
+  mod_i <- gam(popSize ~  
+                   s(Year, k = k_i),
+                 data = dat_i, method = "REML", family = "nb")
+  
+  # get the predictions and ses
+  want <- seq(1, nrow(dat_i), length.out = nrow(dat_i))
+  
+  pdat_i <- with(dat_i,
+                   data.frame(Year = Year[want]))
+  
+  p2 <- predict(mod_i, newdata = pdat_i, type = "response", se.fit = TRUE)
+  pdat_i <- transform(pdat_i, p2 = p2$fit, se2 = p2$se.fit)
+  
+  df.res <- df.residual(mod_i)
+  crit.t <- qt(0.025, df.res, lower.tail = FALSE)
+  pdat_i <- transform(pdat_i,
+                        upper = p2 + (crit.t * se2),
+                        lower = p2 - (crit.t * se2))
+  
+  # estimate second derivatives
+  Term <- "Year"
+  m2.d <- Deriv(mod_i, n = nrow(pdat_i))
+  m2.dci <- confint(m2.d, term = Term)
+  m2.dsig <- signifD(pdat_i$p2, d = m2.d[[Term]]$deriv,
+                     +                    m2.dci[[Term]]$upper, m2.dci[[Term]]$lower)
+  
+  # add significant trend data to the pdat_i data.frame
+  pdat_i$incr_sig <- unlist(m2.dsig$incr)
+  pdat_i$decr_sig <- unlist(m2.dsig$decr)
+  pdat_i$pDev <- summary(mod_i)$dev.expl * 100
+  pdat_i$Segment <- seg_i
+  pdat_i$k_i <- k_i
+  
+  ## save the data
+  if (i == 1) {
+    pdat_allSegs <- pdat_i
+  } else {
+    pdat_allSegs <- rbind(pdat_allSegs, pdat_i)
+  }
+}
+
+## add actual data to the same data.frame
+pdat_allSegs <- pdat_allSegs %>% 
+  left_join(dat_seg, by = c("Year", "Segment"))
+pdat_allSegs$max
+
+## put as a figure
+# make a plot with the significant increases or decreases
+#bySegment_figure <- 
+  ggplot() +
+  geom_ribbon(aes(ymin=lower, ymax=upper, x=Year),
+              data=pdat_allSegs,
+              alpha=0.3,
+              inherit.aes=FALSE) +
+  geom_point(data=dat_seg, aes(x=Year, y=popSize)) +
+  labs(x="Year",
+       y="Number of Individuals") + 
+  geom_line(aes(x = Year, y = incr_sig), data = pdat_allSegs, col = "royalblue", lwd = 1.5, alpha = .9) + 
+  geom_line(aes(x = Year, y = decr_sig), data = pdat_allSegs, col = "tomato", lwd = 1.5) +
+  geom_line(aes(x = Year, y=p2), data=pdat_allSegs) + 
+  facet_wrap(.~ Segment, scales = "free_y") +
+  geom_text(aes(x = 2021, y = max(popSize), label = paste0("%d = ",round(pDev,1))), 
+            data = pdat_allSegs, size = 3) +
+  theme_minimal() +
+  theme(strip.background = element_rect(fill = "lightgrey"),
+        strip.text = element_text(size = 10, face = "bold")) +
+  ylim(c(-2.8,NA))
+  
+# save to file
+ggsave(filename = "byCreek_GAM_figure.pdf", plot = byCreek_figure, device = "pdf", path = "./COBP_GAMFigures/")
+
