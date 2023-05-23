@@ -8,7 +8,7 @@
 # Load packages -----------------------------------------------------------
 library(tidyverse)
 library(readxl)
-
+library(mgcv)
 
 # Verbiage from previous report: We fit separate GAMs for the annual counts at
 # each creek, creek segment, and the full population as smoothed functions of
@@ -243,20 +243,34 @@ dat_Crow <- dat_creeks[dat_creeks$Creek == "Crow Creek",]
 
 # make model with gamm() and calculate confidence intervals
 mod_Crow <- gam(popSize ~  
-                   s(Year, k = 15),
+                   s(Year, k = 5),
                  data = dat_Crow, method = "REML", family = "poisson")
 # check for overdispersion
 sum(residuals(mod_Crow, type = "pearson")^2) / df.residual(mod_Crow)
 # try again with negative binomial model
 mod_Crow <- gam(popSize ~  
-                   s(Year, k = 15),
+                   s(Year, k = 5),
                  data = dat_Crow, method = "REML", family = "nb")
 # check for overdispersion
 sum(residuals(mod_Crow, type = "pearson")^2) / df.residual(mod_Crow)
-# now underdispersed, but better? 
+# now underdispersed, but better?
 
+## test different k values (max is (n/2) = 18)
+mod_Crow # k = 5, edf = 1.39 , REML = 260.07
+# increase k 
+mod_Crow <- gam(popSize ~  s(Year, k = 6), data = dat_Crow, method = "REML", family = "nb")
+mod_Crow # k = 6, edf = 4.17 , REML = 259.46
+mod_Crow <- gam(popSize ~  s(Year, k = 7), data = dat_Crow, method = "REML", family = "nb")
+mod_Crow # k = 7, edf = 4.33, REML = 259.57
+mod_Crow <- gam(popSize ~  s(Year, k = 8), data = dat_Crow, method = "REML", family = "nb")
+mod_Crow # k = 8, edf = 4.34, REML = 259.66
+mod_Crow <- gam(popSize ~  s(Year, k = 9), data = dat_Crow, method = "REML", family = "nb")
+mod_Crow # k = 8, edf = 4.33, REML = 259.66
 
-# waaay overdispersed, try a negative binomial 
+# use k=8
+mod_Crow <- gam(popSize ~  s(Year, k = 8), data = dat_Crow, method = "REML", family = "nb")
+
+## calculate significant trends
 want <- seq(1, nrow(dat_Crow), length.out = 36)
 
 pdat_Crow <- with(dat_Crow,
@@ -271,13 +285,12 @@ pdat_Crow <- transform(pdat_Crow,
                   upper = p2 + (crit.t * se2),
                   lower = p2 - (crit.t * se2))
 
-
 # get functions from github
-# tmpf <- tempfile()
-# download.file("https://gist.github.com/gavinsimpson/e73f011fdaaab4bb5a30/raw/82118ee30c9ef1254795d2ec6d356a664cc138ab/Deriv.R",
-#               tmpf, method = "wget")
-# source(tmpf)
-# ls()
+tmpf <- tempfile()
+download.file("https://gist.github.com/gavinsimpson/e73f011fdaaab4bb5a30/raw/82118ee30c9ef1254795d2ec6d356a664cc138ab/Deriv.R",
+              tmpf, method = "wget")
+source(tmpf)
+ls()
 
 # estimate second derivatives
 Term <- "Year"
@@ -294,18 +307,33 @@ pdat_Crow$decr_sig <- unlist(m2.dsig$decr)
   
   # make model with gamm() and calculate confidence intervals
   mod_Unnamed <- gam(popSize ~  
-                     s(Year, k = 15),
+                     s(Year, k = 5),
                    data = dat_Unnamed, method = "REML", family = "poisson")
   # check for overdispersion
   sum(residuals(mod_Unnamed, type = "pearson")^2) / df.residual(mod_Unnamed)
   # try again with negative binomial model
   mod_Unnamed <- gam(popSize ~  
-                     s(Year, k = 15),
+                     s(Year, k = 5),
                    data = dat_Unnamed, method = "REML", family = "nb")
   # check for overdispersion
   sum(residuals(mod_Unnamed, type = "pearson")^2) / df.residual(mod_Unnamed)
   # now underdispersed, but better? 
   
+  
+  ## test different k values (max is (n/2) = 18)
+  mod_Unnamed # k = 5, edf = 2.15 , REML = 301.23
+  # increase k 
+  mod_Unnamed <- gam(popSize ~  s(Year, k = 6), data = dat_Unnamed, method = "REML", family = "nb")
+  mod_Unnamed # k = 6, edf = 2.17 , REML = 301.24
+  mod_Unnamed <- gam(popSize ~  s(Year, k = 7), data = dat_Unnamed, method = "REML", family = "nb")
+  mod_Unnamed # k = 7, edf = 2.18, REML = 301.24
+  mod_Unnamed <- gam(popSize ~  s(Year, k = 8), data = dat_Unnamed, method = "REML", family = "nb")
+  mod_Unnamed # k = 8, edf = 2.18, REML = 301.25
+  
+  # use k=7
+  mod_Unnamed <- gam(popSize ~  s(Year, k = 7), data = dat_Unnamed, method = "REML", family = "nb")
+  
+  ## calculate significant trends
   
   want <- seq(1, nrow(dat_Unnamed), length.out = 36)
   
@@ -332,24 +360,39 @@ pdat_Crow$decr_sig <- unlist(m2.dsig$decr)
   pdat_Unnamed$decr_sig <- unlist(m2.dsig$decr)
   
 ## Diamond Creek
-  dat_Diamond <- dat_creeks[dat_creeks$Creek == "Diamond Creek",]
+  dat <- dat_creeks[dat_creeks$Creek == "Diamond Creek",]
   
   # make model with gamm() and calculate confidence intervals
   mod_Diamond <- gam(popSize ~  
-                     s(Year, k = 15),
+                     s(Year, k = 5),
                    data = dat_Diamond, method = "REML", family = "poisson")
   # check for overdispersion
   sum(residuals(mod_Diamond, type = "pearson")^2) / df.residual(mod_Diamond)
   # try again with negative binomial model
   mod_Diamond <- gam(popSize ~  
-                     s(Year, k = 15),
+                     s(Year, k = 5),
                    data = dat_Diamond, method = "REML", family = "nb",
                    niterPQL = 50)
   # check for overdispersion
   sum(residuals(mod_Diamond, type = "pearson")^2) / df.residual(mod_Diamond)
   # now underdispersed, but better? 
   
-  # waaay overdispersed, try a negative binomial 
+  
+  ## test different k values (max is (n/2) = 18)
+  mod_Diamond # k = 5, edf = 2.28 , REML = 324.35
+  # increase k 
+  mod_Diamond <- gam(popSize ~  s(Year, k = 6), data = dat_Diamond, method = "REML", family = "nb")
+  mod_Diamond # k = 6, edf = 3.86 , REML = 323.98
+  mod_Diamond <- gam(popSize ~  s(Year, k = 7), data = dat_Diamond, method = "REML", family = "nb")
+  mod_Diamond # k = 7, edf = 3.74, REML = 324.06
+  mod_Diamond <- gam(popSize ~  s(Year, k = 8), data = dat_Diamond, method = "REML", family = "nb")
+  mod_Diamond # k = 8, edf = 3.74, REML = 324.07
+
+  # use k=7
+  mod_Diamond <- gam(popSize ~  s(Year, k = 7), data = dat_Diamond, method = "REML", family = "nb")
+  
+  ## calculate significant trends
+  
   want <- seq(1, nrow(dat_Diamond), length.out = 36)
   
   pdat_Diamond <- with(dat_Diamond,
@@ -411,8 +454,8 @@ byCreek_figure <- ggplot() +
     geom_point(data=dat_creeks, aes(x=Year, y=popSize)) +
     labs(x="Year",
          y="Number of Individuals") + 
-    geom_line(aes(x = Year, y = incr_sig), data = predDat, col = "royalblue", lwd = 1.5, alpha = .9) + 
-    geom_line(aes(x = Year, y = decr_sig), data = predDat, col = "tomato", lwd = 1.5) +
+    geom_line(aes(x = Year, y = incr_sig), data = predDat, col = "tomato", lwd = 1.5, alpha = .9) + 
+    geom_line(aes(x = Year, y = decr_sig), data = predDat, col = "royalblue", lwd = 1.5) +
     geom_line(aes(x = Year, y=p2), data=predDat) + 
     facet_wrap(.~ Creek, ncol = 1, scales = "free_y") +
     geom_text(aes(x = 2021, y = maxY*.95, label = paste0("%d = ",round(pDev,1))), data = predDat, size = 3) +
@@ -441,12 +484,27 @@ mod_all <- gam(popSize ~
 sum(residuals(mod_all, type = "pearson")^2) / df.residual(mod_all)
 # is very overdispersed, so use nb 
 mod_all <- gam(popSize ~  
-                 s(Year, k = 15),
+                 s(Year, k = 10),
                data = dat_all, method = "REML", family = "nb")
 # check for overdispersion
 sum(residuals(mod_all, type = "pearson")^2) / df.residual(mod_all)
 
-# waaay overdispersed, try a negative binomial 
+## test different k values (max is (n/2) = 18)
+mod_all # k = 10, edf = 3.18 , REML = 338.95
+# increase k 
+mod_all <- gam(popSize ~  s(Year, k = 11), data = dat_all, method = "REML", family = "nb")
+mod_all # k = 16, edf = 3.22 , REML = 338.94
+mod_all <- gam(popSize ~  s(Year, k = 13), data = dat_all, method = "REML", family = "nb")
+mod_all # k = 7, edf = 3.31, REML = 338.94
+mod_all <- gam(popSize ~  s(Year, k = 15), data = dat_all, method = "REML", family = "nb")
+mod_all # k = 8, edf = 3.35, REML = 338.93
+mod_all <- gam(popSize ~  s(Year, k = 16), data = dat_all, method = "REML", family = "nb")
+mod_all # k = 8, edf = 3.34, REML = 338.93
+
+# use k=15
+mod_all <- gam(popSize ~  s(Year, k = 15), data = dat_all, method = "REML", family = "nb")
+
+
 want <- seq(1, nrow(dat_all), length.out = 36)
 
 pdat_all <- with(dat_all,
@@ -480,8 +538,8 @@ allCreeks_figure <- ggplot() +
   geom_point(data=dat_all, aes(x=Year, y=popSize)) +
   labs(x="Year",
        y="Number of Individuals") + 
-  geom_line(aes(x = Year, y = incr_sig), data = pdat_all, col = "royalblue", lwd = 1.5, alpha = .9) + 
-  geom_line(aes(x = Year, y = decr_sig), data = pdat_all, col = "tomato", lwd = 1.5) +
+  geom_line(aes(x = Year, y = incr_sig), data = pdat_all, col = "tomato", lwd = 1.5, alpha = .9) + 
+  geom_line(aes(x = Year, y = decr_sig), data = pdat_all, col = "royalblue", lwd = 1.5) +
   geom_line(aes(x = Year, y=p2), data=pdat_all) + 
   geom_text(aes(x = 2021, y = 15000, label = paste0("%d = ",round(pDev,1))), data = pdat_all, size = 3) +
   theme_minimal() +
@@ -501,16 +559,34 @@ for (i in 1:length(unique(dat_seg$Segment))) {
   # get data for that model
   dat_i <- dat_seg[dat_seg$Segment ==  seg_i,]
   
-  if (nrow(dat_i) > 30) {
-    k_i <- 15
-  } else if (nrow(dat_i) > 15) {
-    k_i <- 10
-  } else {
-    k_i <- 5
+  ## chose the appropriate k 
+  # make a vector of possible k values
+  k_poss <- as.array((3:(nrow(dat_i)/2)))
+  # fit the gam w/ each k
+  modResults <- apply(X = k_poss, MARGIN = 1, FUN = function(x) {
+    # run the model w/ the current value of "k"
+    modTemp <- gam(popSize ~ s(Year, k = x),
+                   data = dat_i, method = "REML", family = "nb")
+    # save the relevant values from that run
+    c("K" = x, "EDF" = sum(modTemp$edf)-1, "k_index" = k.check(modTemp)[3])
   }
+    )
+  
+  # get the k for which the EDF stabilizes (the most common number in the vector of EDFs?)
+  commonValues <- as.data.frame(table(round(modResults[2,],1)))
+  if (nrow(commonValues)==1) {
+    commonValues <- commonValues[order(commonValues$Freq, decreasing = TRUE),][1,]
+  } else {
+    commonValues <- commonValues[order(commonValues$Freq, decreasing = TRUE),][1:2,] 
+  }
+  # get the k's with the "most common" EDFs 
+  bestEDF <- as.data.frame(modResults[,which(round(modResults[2,],1) %in% as.numeric(as.character(commonValues$Var1)))])
+  # get the k with the smallest k index
+  bestK <- bestEDF[1,which.max(bestEDF[3,])]
+  
   # make the model
   mod_i <- gam(popSize ~  
-                   s(Year, k = k_i),
+                   s(Year, k = bestK),
                  data = dat_i, method = "REML", family = "nb")
   
   # get the predictions and ses
@@ -540,7 +616,7 @@ for (i in 1:length(unique(dat_seg$Segment))) {
   pdat_i$decr_sig <- unlist(m2.dsig$decr)
   pdat_i$pDev <- summary(mod_i)$dev.expl * 100
   pdat_i$Segment <- seg_i
-  pdat_i$k_i <- k_i
+  pdat_i$k_i <- bestK
   
   ## save the data
   if (i == 1) {
@@ -566,6 +642,8 @@ temp$maxY <- apply(temp, MARGIN = 1, FUN = function(x)
 pdat_allSegs <- pdat_allSegs %>% 
   left_join(temp[,c("Segment", "maxY")], by = "Segment")
 
+# make lower bound of confidence intervals 0
+pdat_allSegs[pdat_allSegs$lower <0,"lower"] <- 0
 ## put as a figure
 # make a plot with the significant increases or decreases
 bySegment_figure <- 
@@ -577,8 +655,8 @@ bySegment_figure <-
   geom_point(data=dat_seg, aes(x=Year, y=popSize)) +
   labs(x="Year",
        y="Number of Individuals") + 
-  geom_line(aes(x = Year, y = incr_sig), data = pdat_allSegs, col = "royalblue", lwd = 1.5, alpha = .9) + 
-  geom_line(aes(x = Year, y = decr_sig), data = pdat_allSegs, col = "tomato", lwd = 1.5) +
+  geom_line(aes(x = Year, y = incr_sig), data = pdat_allSegs, col = "tomato", lwd = 1.5, alpha = .9) + 
+  geom_line(aes(x = Year, y = decr_sig), data = pdat_allSegs, col = "royalblue", lwd = 1.5) +
   geom_line(aes(x = Year, y=p2), data=pdat_allSegs) + 
   facet_wrap(.~ Segment, scales = "free_y") +
   geom_text(aes(x = 2018, y = maxY*.95, label = paste0("%d = ",round(pDev,0))), 
@@ -586,7 +664,7 @@ bySegment_figure <-
   theme_minimal() +
   theme(strip.background = element_rect(fill = "lightgrey"),
         strip.text = element_text(size = 10, face = "bold")) +
-  ylim(c(-2.8,NA))
+  ylim(c(0,NA))
   
 # save to file
 ggsave(filename = "bySegment_GAM_figure.pdf", plot = bySegment_figure, 
