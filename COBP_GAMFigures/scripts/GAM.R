@@ -530,6 +530,15 @@ pdat_all$incr_sig <- unlist(m2.dsig$incr)
 pdat_all$decr_sig <- unlist(m2.dsig$decr)
 pdat_all$pDev <- summary(mod_all)$dev.expl * 100
 
+
+# add information for "Creek"
+pdat_all$Creek <- "All Creeks"
+pdat_all <- left_join(pdat_all, dat_all, by = "Year")
+  
+  
+pdat_all$maxY <- max(pdat_all$popSize)
+pdat_all <- pdat_all[,names(predDat)]
+
 allCreeks_figure <- ggplot() +
   geom_ribbon(aes(ymin=lower, ymax=upper, x=Year),
               data=pdat_all,
@@ -551,7 +560,54 @@ ggsave(filename = "allCreeks_GAM_figure.pdf", plot = allCreeks_figure,
        device = "pdf", path = "./COBP_GAMFigures/",
        height = 3, width = 6)
 
-# Segment-level figures ---------------------------------------------------
+
+# figure for both all data and by creek -----------------------------------
+
+#add data together
+preds <- rbind(predDat, pdat_all)
+# order the factor of "creek" so that "all creeks" is on the top
+preds$Creek <- factor(preds$Creek, levels = c("All Creeks", "Crow Creek", "Diamond Creek", "Unnamed Creek"), ordered = TRUE)
+
+# make figure for creeks
+  byCreeks_partFig <- ggplot(data = preds[preds$Creek != "All Creeks",]) +
+    geom_ribbon(aes(ymin=lower, ymax=upper, x=Year),
+                alpha=0.3,
+                inherit.aes=FALSE) +
+    geom_point( aes(x=Year, y=popSize)) +
+    labs(x="Year",
+         y="Number of Individuals") + 
+    geom_line(aes(x = Year, y = incr_sig), col = "tomato", lwd = 1.5, alpha = .9) + 
+    geom_line(aes(x = Year, y = decr_sig), col = "royalblue", lwd = 1.5) +
+    geom_line(aes(x = Year, y=p2)) + 
+    facet_wrap(.~ Creek, ncol = 1, scales = "free_y") +
+    geom_text(aes(x = 2021, y = maxY*.95, label = paste0("%d = ",round(pDev,1))), size = 3) +
+    theme_minimal() +
+    ylim(c(0,NA)) +
+    xlim(c(1986, 2022)) + 
+    theme(strip.background = element_rect(fill = c("lightgrey"), colour = NA),
+          strip.text = element_text(size = 10, face = "bold", hjust = -.005))
+  #geom_smooth(aes(x = Year, y = popSize), data = dat_Diamond, method = "gam", method.args = list(family = "nb"))
+  
+  allCreeks_partFig <- ggplot(data = preds[preds$Creek == "All Creeks",]) +
+    geom_ribbon(aes(ymin=lower, ymax=upper, x=Year),
+                alpha=0.3,
+                inherit.aes=FALSE) +
+    geom_point( aes(x=Year, y=popSize)) +
+    labs(x="Year",
+         y="Number of Individuals") + 
+    geom_line(aes(x = Year, y = incr_sig), col = "tomato", lwd = 1.5, alpha = .9) + 
+    geom_line(aes(x = Year, y = decr_sig), col = "royalblue", lwd = 1.5) +
+    geom_line(aes(x = Year, y=p2)) + 
+    facet_wrap(.~ Creek, ncol = 1, scales = "free_y") +
+    geom_text(aes(x = 2021, y = maxY*.95, label = paste0("%d = ",round(pDev,1))), size = 3) +
+    theme_minimal() +
+    ylim(c(0,NA)) +
+    theme(strip.background = element_rect(fill = c("lightgrey")),
+          strip.text = element_text(size = 10, face = "bold"))
+
+  cowplot::plot_grid(allCreeks_partFig, byCreeks_partFig, ncol = 1, rel_heights = c(.3,.6), 
+                     labels = c("A", "B", "C", "D"), hjust = -2)
+  # Segment-level figures ---------------------------------------------------
 
 for (i in 1:length(unique(dat_seg$Segment))) {
   # get the name of the ith segment
