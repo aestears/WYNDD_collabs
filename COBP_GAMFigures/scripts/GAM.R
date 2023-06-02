@@ -461,8 +461,8 @@ byCreek_figure <- ggplot() +
     geom_text(aes(x = 2021, y = maxY*.95, label = paste0("%d = ",round(pDev,1))), data = predDat, size = 3) +
     theme_minimal() +
     ylim(c(0,NA)) +
-    theme(strip.background = element_rect(fill = "lightgrey"),
-          strip.text = element_text(size = 10, face = "bold"))
+  theme(strip.background = element_rect(fill = c("lightgrey"), colour = NA),
+        strip.text = element_text(size = 10, face = "bold", hjust = -.005))
   #geom_smooth(aes(x = Year, y = popSize), data = dat_Diamond, method = "gam", method.args = list(family = "nb"))
   
 # save to file
@@ -569,7 +569,13 @@ preds <- rbind(predDat, pdat_all)
 preds$Creek <- factor(preds$Creek, levels = c("All Creeks", "Crow Creek", "Diamond Creek", "Unnamed Creek"), ordered = TRUE)
 
 # make figure for creeks
-  byCreeks_partFig <- ggplot(data = preds[preds$Creek != "All Creeks",]) +
+# make labelling function
+creek_label = c("All Creeks" = "A) All Creeks",
+                "Crow Creek" = "B) Crow Creek", 
+                "Diamond Creek" = "C) Diamond Creek", 
+                "Unnamed Creek" = "D) Unnamed Creek")
+
+byCreeks_partFig <- ggplot(data = preds[preds$Creek != "All Creeks",]) +
     geom_ribbon(aes(ymin=lower, ymax=upper, x=Year),
                 alpha=0.3,
                 inherit.aes=FALSE) +
@@ -579,7 +585,7 @@ preds$Creek <- factor(preds$Creek, levels = c("All Creeks", "Crow Creek", "Diamo
     geom_line(aes(x = Year, y = incr_sig), col = "tomato", lwd = 1.5, alpha = .9) + 
     geom_line(aes(x = Year, y = decr_sig), col = "royalblue", lwd = 1.5) +
     geom_line(aes(x = Year, y=p2)) + 
-    facet_wrap(.~ Creek, ncol = 1, scales = "free_y") +
+    facet_wrap(.~ Creek, ncol = 1, scales = "free_y", labeller = labeller(Creek = creek_label)) +
     geom_text(aes(x = 2021, y = maxY*.95, label = paste0("%d = ",round(pDev,1))), size = 3) +
     theme_minimal() +
     ylim(c(0,NA)) +
@@ -598,16 +604,23 @@ preds$Creek <- factor(preds$Creek, levels = c("All Creeks", "Crow Creek", "Diamo
     geom_line(aes(x = Year, y = incr_sig), col = "tomato", lwd = 1.5, alpha = .9) + 
     geom_line(aes(x = Year, y = decr_sig), col = "royalblue", lwd = 1.5) +
     geom_line(aes(x = Year, y=p2)) + 
-    facet_wrap(.~ Creek, ncol = 1, scales = "free_y") +
+    facet_wrap(.~ Creek, ncol = 1, scales = "free_y", labeller = labeller(Creek = creek_label)) +
     geom_text(aes(x = 2021, y = maxY*.95, label = paste0("%d = ",round(pDev,1))), size = 3) +
     theme_minimal() +
     ylim(c(0,NA)) +
-    theme(strip.background = element_rect(fill = c("lightgrey")),
-          strip.text = element_text(size = 10, face = "bold"))
+    xlim(c(1986, 2022)) + 
+    theme(strip.background = element_rect(fill = c("lightgrey"), colour = NA),
+          strip.text = element_text(size = 10, face = "bold", hjust = -.005))
+  
 
-  cowplot::plot_grid(allCreeks_partFig, byCreeks_partFig, ncol = 1, rel_heights = c(.3,.6), 
-                     labels = c("A", "B", "C", "D"), hjust = -2)
-  # Segment-level figures ---------------------------------------------------
+  allCreekByCreek_Fig <- cowplot::plot_grid(allCreeks_partFig, byCreeks_partFig, ncol = 1, rel_heights = c(.3,.6))
+ 
+  # save figure
+  ggsave(filename = "allDat_byCreeks_GAM_figure.pdf", plot =  allCreekByCreek_Fig, 
+         device = "pdf", path = "./COBP_GAMFigures/",
+         height = 7, width = 6)
+  
+   # Segment-level figures ---------------------------------------------------
 
 for (i in 1:length(unique(dat_seg$Segment))) {
   # get the name of the ith segment
@@ -673,6 +686,9 @@ for (i in 1:length(unique(dat_seg$Segment))) {
   pdat_i$pDev <- summary(mod_i)$dev.expl * 100
   pdat_i$Segment <- seg_i
   pdat_i$k_i <- bestK
+  # save model terms
+  pdat_i$edf <- summary(mod_i)$edf
+  pdat_i$pVal <- summary(mod_i)$s.table[4]
   
   ## save the data
   if (i == 1) {
@@ -718,8 +734,8 @@ bySegment_figure <-
   geom_text(aes(x = 2018, y = maxY*.95, label = paste0("%d = ",round(pDev,0))), 
             data = pdat_allSegs, size = 3) +
   theme_minimal() +
-  theme(strip.background = element_rect(fill = "lightgrey"),
-        strip.text = element_text(size = 10, face = "bold")) +
+  theme(strip.background = element_rect(fill = c("lightgrey"), colour = NA),
+        strip.text = element_text(size = 10, face = "bold", hjust = -.005)) +
   ylim(c(0,NA))
   
 # save to file
@@ -727,3 +743,55 @@ ggsave(filename = "bySegment_GAM_figure.pdf", plot = bySegment_figure,
        device = "pdf", path = "./COBP_GAMFigures/",
        height = 8, width = 8)
 
+
+# Log-lambda analysis -----------------------------------------------------
+# generate plots showing change in population growth rate at each creek
+# data: population = dat_all; creek = dat_creek
+# for the entire population
+lambda_all <- dat_all %>% 
+  mutate(popSize_tMinus1 = lag(dat_all$popSize,k = 1),
+         lambda = popSize/popSize_tMinus1,
+         logLam = log(lambda))
+  
+# by creek
+temp <- dat_creeks %>% 
+  select(Year, CrowCreek, DiamondCreek, UnnamedCreek) %>% 
+  group_by(Year) %>% 
+  summarize(CrowCreek_tplus1 = mean(CrowCreek),
+            DiamondCreek_tplus1 = mean(DiamondCreek),
+            UnnamedCreek_tplus1 = mean(UnnamedCreek)) 
+
+lambda_creek <- temp %>% 
+  lag(k=1) %>% 
+  bind_cols(temp) %>%
+  dplyr::select(2:8) %>% 
+  rename("CrowCreek_tplus1" = "CrowCreek_tplus1...2", 
+         "DiamondCreek_tplus1" = "DiamondCreek_tplus1...3",
+         "UnnamedCreek_tplus1" = "UnnamedCreek_tplus1...4", 
+         "Year" = "Year...5",
+         "CrowCreek_t" = "CrowCreek_tplus1...6",
+         "DiamondCreek_t" = "DiamondCreek_tplus1...7",
+         "UnnamedCreek_t" = "UnnamedCreek_tplus1...8") %>% 
+  mutate(CrowCreek_lambda = CrowCreek_tplus1/CrowCreek_t,
+         DiamondCreek_lambda = DiamondCreek_tplus1/DiamondCreek_t,
+         UnnamedCreek_lambda = UnnamedCreek_tplus1/UnnamedCreek_t,
+         CrowCreek_logLam = log(CrowCreek_lambda),
+         DiamondCreek_logLam = log(DiamondCreek_lambda),
+         UnnamedCreek_logLam = log(UnnamedCreek_lambda)) %>% 
+  pivot_longer(cols = c(1:3,5:13),
+               names_to = c("Creek", "parameter"),
+               values_to = "values",
+               names_sep = "_") %>% 
+  mutate(Creek = str_glue("{name} Creek",
+                          name = str_split(lambda_creek$Creek, "Creek", simplify = TRUE)[,1]))
+
+# plot the values over time for each creek 
+ggplot() +
+  geom_hline(aes(), yintercept = 0, col = "grey", lty = 2) +
+  geom_line(aes(x = Year, y = values), data = lambda_creek[lambda_creek$parameter == "logLam",]) +
+  facet_wrap(.~Creek, ncol = 1) +
+  theme_minimal() +
+  theme(strip.background = element_rect(fill = c("lightgrey"), colour = NA),
+      strip.text = element_text(size = 10, face = "bold", hjust = -.005)) 
+  
+  
