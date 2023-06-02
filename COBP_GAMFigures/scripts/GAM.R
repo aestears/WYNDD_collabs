@@ -751,7 +751,8 @@ ggsave(filename = "bySegment_GAM_figure.pdf", plot = bySegment_figure,
 lambda_all <- dat_all %>% 
   mutate(popSize_tMinus1 = lag(dat_all$popSize,k = 1),
          lambda = popSize/popSize_tMinus1,
-         logLam = log(lambda))
+         logLam = log(lambda)) %>% 
+  mutate(Creek = "All Creeks")
   
 # by creek
 temp <- dat_creeks %>% 
@@ -785,13 +786,35 @@ lambda_creek <- temp %>%
   mutate(Creek = str_glue("{name} Creek",
                           name = str_split(lambda_creek$Creek, "Creek", simplify = TRUE)[,1]))
 
+creek_label = c("All Creeks" = "A) All Creeks",
+                "Crow Creek" = "B) Crow Creek", 
+                "Diamond Creek" = "C) Diamond Creek", 
+                "Unnamed Creek" = "D) Unnamed Creek")
 # plot the values over time for each creek 
-ggplot() +
-  geom_hline(aes(), yintercept = 0, col = "grey", lty = 2) +
-  geom_line(aes(x = Year, y = values), data = lambda_creek[lambda_creek$parameter == "logLam",]) +
-  facet_wrap(.~Creek, ncol = 1) +
+creekLam_plot <- ggplot() +
+  geom_hline(aes(), yintercept = 0, col = "grey") +
+  geom_line(aes(x = Year, y = values), data = lambda_creek[lambda_creek$parameter %in% c("logLam"),]) +
+  facet_wrap(.~Creek, ncol = 1, labeller = labeller(Creek = creek_label)) +
   theme_minimal() +
   theme(strip.background = element_rect(fill = c("lightgrey"), colour = NA),
-      strip.text = element_text(size = 10, face = "bold", hjust = -.005)) 
+      strip.text = element_text(size = 10, face = "bold", hjust = -.005)) +
+  ylab("log(Lambda)") +
+  xlim(c(1988,2022))
+
+allLam_plot <- 
+ggplot() +
+  geom_hline(aes(), yintercept = 0, col = "grey") +
+  geom_line(aes(x = Year, y = logLam), data = lambda_all) +
+  facet_wrap(.~Creek, ncol = 1, labeller = labeller(Creek = creek_label)) +
+  theme_minimal() +
+  theme(strip.background = element_rect(fill = c("lightgrey"), colour = NA),
+        strip.text = element_text(size = 10, face = "bold", hjust = -.005)) +
+  ylab("log(Lambda)") +
+  xlim(c(1988,2022)) +
+  ylim(c(-1.5,2))
   
-  
+lambdaPlots <- cowplot::plot_grid(allLam_plot, creekLam_plot, ncol = 1, rel_heights = c(.25,.75))
+# save to file
+ggsave(filename = "logLambda_figure.pdf", plot = lambdaPlots, 
+       device = "pdf", path = "./COBP_GAMFigures/",
+       height =6, width = 5)
