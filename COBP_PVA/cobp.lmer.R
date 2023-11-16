@@ -1,5 +1,5 @@
 # Analysis for the April 2021 PVA Update
-# Does not include 2022-23 counts
+# Code from Tyson Wepperich, updated by Alice Stears Nov. 2023
 
 
 # 1. Annual growth rates & creek carrying capacity 
@@ -24,11 +24,10 @@ theme_update(panel.grid.major = element_blank(), panel.grid.minor = element_blan
 scale_colour_discrete <- function(...) {
   scale_colour_brewer(..., type = "qual", palette = "Dark2")
 }
-source('dynamic_shift_detector.R') # from https://github.com/cbahlai/dynamic_shift_detector
+source('./COBP_PVA/dynamic_shift_detector.R') # from https://github.com/cbahlai/dynamic_shift_detector
 
-
-creeks <- read.csv("data/creek.counts.csv")
-segments <- read.csv("data/segment.counts.csv")
+creeks <- read.csv("./COBP_PVA/data/creek.counts.csv")
+segments <- read.csv("./COBP_PVA/data/segment.counts.csv")
 segdat <- segments %>% 
   gather(segment, flower.count, C.I:U.II) %>% 
   filter(is.na(year) == FALSE) %>% 
