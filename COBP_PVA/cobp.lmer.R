@@ -29,15 +29,14 @@ source('./COBP_PVA/dynamic_shift_detector.R') # from https://github.com/cbahlai/
 creeks <- read.csv("./COBP_PVA/data/creek.counts.csv")
 segments <- read.csv("./COBP_PVA/data/segment.counts.csv")
 segdat <- segments %>% 
-  gather(segment, flower.count, C.I:U.II) %>% 
-  filter(is.na(year) == FALSE) %>% 
-  mutate(segment = gsub(pattern = ".", replacement = "-", x = segment, fixed = TRUE)) %>% 
-  filter(segment %!in% c("C-VII", "C-VIII"))
+  gather(segment, flower.count, C1:U2) %>% 
+  filter(segment %!in% c("C7", "C8"))
 
-census <- read.csv("data/creek.counts.csv") %>% 
+census <- read.csv("./COBP_PVA/data/creek.counts.csv") %>% 
   filter(year > 1987) %>% 
-  gather(segment, flower.count, crow:unnamed) %>% 
-  bind_rows(segdat)
+  gather(segment, flower.count, CrowCreek:UnnamedCreek) %>% 
+  bind_rows(segdat) %>% 
+  select(-Total)
 
 # 1. Annual growth rates ----
 popdat <- census %>% 
@@ -50,24 +49,30 @@ popdat <- census %>%
          yearfact = as.factor(year),
          logNt1 = log(Nt1 + 1),
          date = paste0("01/08/", year)) %>% 
-  filter(segment %!in% c("crow", "diamond", "unnamed"))
-  # filter(segment %in% c("crow", "diamond", "unnamed"))
+  filter(segment %!in% c("CrowCreek", "DiamondCreek", "UnnamedCreek")) %>% 
+  select(-Notes)
 
 # 2. Population models ----
 # Gompertz (mod2) better than Ricker (mod1), mod3 (varying int/slope singular fit)
 # Ricker: K = -a/b
 # Gompertz: K = exp(-a/b)
+# basic model w/ no predictor 
 mod0 <- lmer(loglam ~ 1  + (1|segment) + (1|yearfact), 
              data = popdat)
+# Ricker model
 mod1 <- lmer(loglam ~ Nt1  + (1|segment) + (1|yearfact), 
             data = popdat)
+#Gompertz model
 mod2 <- lmer(loglam ~ logNt1  + (1|segment) + (1|yearfact), 
             data = popdat)
+#Gompertz model w/ random slope for log(pop size in t-1) in each segment
 mod3 <- lmer(loglam ~ logNt1  + (0 + logNt1|segment) + (1|yearfact),
              data = popdat) # not better than simpler, but segment-specific K is nice
+# not sure what model type this is? ... didn't converge
 mod4 <- lmer(loglam ~ zyear + logNt1  + (1 + zyear |segment) + (1|yearfact), 
              data = popdat)
 AIC(mod0, mod1, mod2, mod3, mod4)
+# model 2 is the best 
 
 # Carrying capacity estimates for all years together
 df <- data.frame(coef(mod2)$segment) %>% 
@@ -78,8 +83,8 @@ df <- data.frame(coef(mod2)$segment) %>%
 moddat <- popdat %>% 
   ungroup() %>% 
   na.omit %>% 
-  dplyr::mutate(pred = predict(mod2),
-         res = residuals(mod2),
+  dplyr::mutate(loglam_pred = predict(mod2),
+         loglam_res = residuals(mod2),
          date = paste0("01-08-", year))
 
 
@@ -87,30 +92,21 @@ moddat <- popdat %>%
 
 # Load monthly climate data
 # from https://wrcc.dri.edu/cgi-bin/cliMAIN.pl?wy1675
-temp <- read.csv("data/temp.cheyenne.csv", skip = 1, header = TRUE) %>% 
+temp <- read.csv("./COBP_PVA/data/temp.cheyenne.csv", skip = 1, header = TRUE) %>% 
   tidyr::gather(key = month, value = temp, jan:dec) %>% 
   mutate(date = lubridate::ymd(paste(year, month, 1))) %>% 
   dplyr::select(date, temp) %>% 
   filter(year(date)>=1985) %>% 
   mutate(date = strftime(date, format = "%d/%m/%Y"))
-prec <- read.csv("data/precip.cheyenne.csv", skip = 1, header = TRUE) %>% 
+
+prec <- read.csv("./COBP_PVA/data/precip.cheyenne.csv", skip = 1, header = TRUE) %>% 
   tidyr::gather(key = month, value = prec, jan:dec) %>% 
   mutate(date = lubridate::ymd(paste(year, month, 1))) %>% 
   dplyr::select(date, prec) %>% 
   filter(year(date)>=1985) %>% 
   mutate(date = strftime(date, format = "%d/%m/%Y"))
 
-# water only there for 1993-2018
-# from https://waterdata.usgs.gov/wy/nwis/inventory/?site_no=06755960
-water <- read.csv("data/crow.flow.csv", header = TRUE, fileEncoding="latin1") %>% 
-  tidyr::gather(key = month, value = flow, jan:dec) %>% 
-  mutate(date = lubridate::ymd(paste(year, month, 1))) %>% 
-  dplyr::select(date, flow) %>% 
-  filter(year(date)>=1985) %>% 
-  mutate(date = strftime(date, format = "%d/%m/%Y"),
-         zflow = log(flow + 1))
-
-snow <- read.csv("data/snow.cheyenne.csv", skip = 1, header = TRUE) %>% 
+snow <- read.csv("./COBP_PVA/data/snow.cheyenne.csv", skip = 1, header = TRUE) %>% 
   tidyr::gather(key = month, value = snow, jul:jun) %>% 
   mutate(year_split = ifelse(month %in% c("jul", "aug", "sep", "oct", "nov", "dec"),
                              substr(year, 1, 4),
@@ -122,15 +118,27 @@ snow <- read.csv("data/snow.cheyenne.csv", skip = 1, header = TRUE) %>%
   mutate(date = strftime(date, format = "%d/%m/%Y"),
          zsnow = log(snow + 1))
 
-testname <- read.csv("data/precip.cheyenne.csv", skip = 1, header = TRUE)
-pdsi <- read.delim("data/pdsi.txt", header = FALSE, sep = "")
+# water only there for 1993-2018
+# from https://waterdata.usgs.gov/wy/nwis/inventory/?site_no=06755960
+water <- read.csv("./COBP_PVA/data/crow.flow.csv", header = TRUE, fileEncoding="latin1") %>% 
+  tidyr::gather(key = month, value = flow, jan:dec) %>% 
+  mutate(date = lubridate::ymd(paste(year, month, 1))) %>% 
+  dplyr::select(date, flow) %>% 
+  filter(year(date)>=1985) %>% 
+  mutate(date = strftime(date, format = "%d/%m/%Y"),
+         zflow = log(flow + 1))
+
+# from https://www1.ncdc.noaa.gov/pub/data/cirs/climdiv/climdiv-pdsidv-v1.0.0-20231106
+testname <- read.csv("./COBP_PVA/data/precip.cheyenne.csv", skip = 1, header = TRUE)
+pdsi <- read.delim("./COBP_PVA/data/pdsi.txt", header = FALSE, sep = "")
 names(pdsi) <- names(testname)[1:13]
 pdsi$year <- gsub("480805", replacement = "", x = pdsi$year)
 pdsi <- pdsi %>% 
   tidyr::gather(key = month, value = pdsi, jan:dec) %>% 
   mutate(date = lubridate::ymd(paste(year, month, 1))) %>% 
   dplyr::select(date, pdsi) %>% 
-  filter(year(date)>=1985) %>% 
+  filter(year(date)>=1985) %>%
+  filter(!(year(date) == 2023 & month(date) %in% c(11, 12))) %>% 
   mutate(date = strftime(date, format = "%d/%m/%Y"))
 
 # Pair environmental variables with appropriate census dataset
@@ -197,8 +205,8 @@ plt2 <- ggplot(outdat, aes(x = climate, y = yvar, color = year)) +
   geom_smooth(method = "lm", formula = y ~ poly(x, 2), alpha = .5, color = "black") +
   xlab("Stream discharge (23 - 7 months prior)") +
   ylab("Annual log population growth rate (flower)") +
-  theme(legend.position = c(.85, .2)) +
   climwin:::theme_climwin() +
+  theme(legend.position = c(.85, .2)) +
   ggtitle("Best fit model")
 
 # Figure 2
@@ -265,8 +273,8 @@ plt2 <- ggplot(outdat, aes(x = climate, y = yvar, color = year)) +
   geom_smooth(method = "lm", alpha = .5, color = "black") +
   xlab("Temperature (23 - 19 months prior)") +
   ylab("Annual log population growth rate (flower)") +
-  theme(legend.position = c(.1, .2)) +
   climwin:::theme_climwin() +
+  theme(legend.position = c(.1, .2)) +
   ggtitle("Best fit model")
 
 # Figure 3
@@ -337,8 +345,8 @@ plt2 <- ggplot(outdat, aes(x = climate, y = yvar, color = year)) +
   geom_smooth(method = "lm", formula = y ~ poly(x, 2), alpha = .5, color = "black") +
   xlab("Precipitation (24 - 2 months prior)") +
   ylab("Annual log population growth rate (flower)") +
-  theme(legend.position = c(.82, .2)) +
   climwin:::theme_climwin() +
+  theme(legend.position = c(.82, .2)) +
   ggtitle("Best fit model")
 
 # Figure 4
@@ -479,8 +487,8 @@ plt2 <- ggplot(outdat, aes(x = climate, y = yvar, color = year)) +
   geom_smooth(method = "lm", alpha = .5, color = "black") +
   xlab("PDSI (36-1 months prior)") +
   ylab("Annual log population growth rate (flower)") +
-  theme(legend.position = c(.15, .2))+
   climwin:::theme_climwin() +
+  theme(legend.position = c(.15, .2))+
   ggtitle("Best fit model")
 
 #Figure 6
@@ -564,18 +572,22 @@ df <- df %>%
          segment = row.names(coef(mod2)$segment))
 
 # Main effect of precip with lines for each segments varying slopes (messy!)
-plt5 <- plot_model(mod2, type = "pred", terms = "zprec",
-                   axis.title = c("Mean precipitation in inches (24-2 months prior)", "Log(annual population growth rate)"),  
-                   title = "") +
-  geom_line(data = newdata, aes(x = prec, y = pred, group = segment), color = "light blue", inherit.aes = FALSE)
 
 newdata <- data.frame(expand.grid(segment = unique(envdat$segment),
                                   logNt1 = c(2, 4, 6, 8),
                                   ztemp = mean(envdat$ztemp),
                                   zprec = seq(min(envdat$zprec), max(envdat$zprec), length.out = 100),
-                                  zsnow = mean(envdat$zsnow))) %>% 
+                                  zprec2 = seq(min(envdat$zprec), max(envdat$zprec), length.out = 100)^2,
+                                  zsnow = mean(envdat$zsnow),
+                                  pdsi = mean(envdat$pdsi))) %>% 
   mutate(zprec2 = zprec^2)
-newdata$pred <- predict(mod3, newdata = newdata, re.form = ~ (1 + zprec + zprec2 |segment))
+newdata$pred <- predict(mod2, newdata = newdata, re.form = ~ (1 |segment))
+
+#? not sure what this is for? 
+plt5 <- plot_model(mod2, type = "pred", terms = "zprec",
+                   axis.title = c("Mean precipitation in inches (24-2 months prior)", "Log(annual population growth rate)"),  
+                   title = "") +
+  geom_line(data = newdata, aes(x = zprec, y = pred, group = segment), color = "light blue", inherit.aes = FALSE)
 
 ggplot(newdata, aes(x = zprec, y = pred, group = segment)) +
   geom_line() +
@@ -602,42 +614,46 @@ cowplot::plot_grid(plt1, plt2, plt3, plt4, labels = c('A', 'B', "C", "D"), label
 # Gompertz (modified the Ricker model in dynamic_shift_detector.R)  
 
 out <- census %>% 
+  select(-Notes) %>% 
   group_by(segment) %>%
   nest()
 
 # Warning! takes >30 minutes to run algorithm on all segments
 # Load saved results below
+breaks <- lapply(out$data, function(x) DSdetector(data = data.frame(x), criterion = "AICc"))
 
-# breaks <- lapply(out$data, function(x) DSdetector(data = data.frame(x), criterion = "AICc"))
 # names(breaks) <- unique(census$segment)
-# saveRDS(breaks, "DSD_segment_naive_gompertz.rds")
+#saveRDS(breaks, "DSD_segment_naive_gompertz.rds")
 
-breaks <- readRDS("DSD_segment_naive_gompertz.rds")
+#breaks <- readRDS("./COBP_PVA/DSD_segment_naive_gompertz.rds")
 
-test <- lapply(1:length(breaks), FUN = function(x) dplyr::mutate(breaks[[x]], segment = names(breaks)[x])) %>% 
+# calcute K for each model 
+breaks_results <- lapply(1:length(breaks), FUN = function(x) dplyr::mutate(breaks[[x]][[3]], segment = x)) %>% 
   bind_rows() %>% 
-  mutate(K = exp(-r/k))
+  rename(a = r, b = k, a_se = rse, b_se = kse) %>% # update names for gompertz model 
+  mutate(K = exp(-a/b)) # calculate K 
 
 
 
 # 5. Simulations ----
 
 # simulate future by decade (simplistic, maybe MACAv2 could be source of more realistic scenarios)
-
+# divide into two 8 year segments (and two 9 year segment) (33 years of data)
 future_env <- envdat %>% 
   select(year, temp, prec, zsnow, pdsi, ztemp, zprec, zprec2) %>% 
-  filter(year != 2020) %>% 
+  #filter(year != 2020) %>% 
   group_by(year) %>% 
   slice(1) %>% 
-  mutate(decade = case_when(year <= 1999 ~ "1990s",
-                            year >=2010 ~ "2010s",
-                            TRUE ~ "2000s"))
+  mutate(decade = case_when(year <= 1998 ~ "90-98",
+                            year >= 1999 & year < 2007 ~ "99-06",
+                            year >= 2007 & year < 2016 ~ "07-15",
+                            year >= 2016 ~ "16-23"))
 
 future_summ <- future_env %>% 
   group_by(decade) %>% 
   summarise_all(mean)
 
-# 9 different 20-year scenarios
+# 16 different 20-year scenarios
 scens <- expand.grid(unique(future_env$decade), unique(future_env$decade)) %>% 
   mutate(scenario = row_number()) #%>% 
   # filter(scenario == 1)
@@ -648,7 +664,7 @@ segcounts <- census %>% filter(segment %in% envdat$segment, year == 2020)
 
 # loop to get model coefficients for end of monitoring period
 # ignore errors resulting from assigning values past the end of the time period.
-# Warning: takes a while to run nsim x scneario!
+# Warning: takes a while to run nsim x scenario!
 # Load saved simulation results after loop
 outseg <- list()
 outcreek <- list()

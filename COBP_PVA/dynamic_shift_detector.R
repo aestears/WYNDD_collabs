@@ -38,7 +38,7 @@ AICcorrection<-function(data, breaks){
 
 #load minpack.lm
 #this is my prefered nonlinear package- fewer convergence issues.
-#we'll want to use its nlsLM function to fit the Ricker equation.
+#we'll want to use its nlsLM function to fit the gompertz equation.
 library(minpack.lm)
 
 #create function that fits the ricker model
@@ -66,19 +66,19 @@ library(minpack.lm)
 #   return(output)
 # }
 
-rickerfit<-function (data){
+gompertzfit<-function (data){
   #supress warnings about failed convergence in oddball fits- these models won't be favoured by AIC anyway
   options(warn=-1)
   #fit the model
-  ricker.model<-tryCatch(nlsLM(Nt1~ Nt*exp(a + b * log(Nt + 1)), start=list(a=2, b=-0.5), data=data), error=function(e) NULL)
-  #What outputs do we need from each run? AIC, r and k, and their resepective errors.
-  #we'll want to create a vecor with this information in it so we can use this information later
-  if(is.list(ricker.model)){
-    output<-c(AIC(ricker.model), #AIC
-              summary(ricker.model)$coefficients[1,1], # r
-              summary(ricker.model)$coefficients[1,2], # se for r
-              summary(ricker.model)$coefficients[2,1], # k
-              summary(ricker.model)$coefficients[2,2]) # se for k
+  gompertz.model<-tryCatch(nlsLM(Nt1~ Nt*exp(a + b * log(Nt + 1)), start=list(a=2, b=-0.5), data=data), error=function(e) NULL)
+  #What outputs do we need from each run? AIC, r and k, and their respective errors.
+  #we'll want to create a vector with this information in it so we can use this information later
+  if(is.list(gompertz.model)){
+    output<-c(AIC(gompertz.model), #AIC
+              summary(gompertz.model)$coefficients[1,1], # a
+              summary(gompertz.model)$coefficients[1,2], # se for a
+              summary(gompertz.model)$coefficients[2,1], # b
+              summary(gompertz.model)$coefficients[2,2]) # se for b
   }else{
     output<-c(100000000, 0, 0, 0, 0)#if the model fails to converge, give it an an arbitrarily high but finite AIC
   }
@@ -113,7 +113,7 @@ out.frame<-data.frame(matrix(vector(), 0, 2,
 
 splitnfit<-function(data, breaks, fit, out.frame){ #need to include vectors for breaks and fit to re-feed into this function
   #first fit no break model, put it in the data frame
-  fit.0<-rickerfit(data) #fit the model
+  fit.0<-gompertzfit(data) #fit the model
   
   out<-cbind(list(max(data$year)), list(fit.0[1])) #output vector with no breaks
   out.frame<-rbind(out.frame, out)
@@ -123,8 +123,8 @@ splitnfit<-function(data, breaks, fit, out.frame){ #need to include vectors for 
     part1<-data[which(data$year<Break1),] #create subsets at the breakpoint
     part2<-data[which(data$year>(Break1-1)),]
     if(nrow(part1)>3 & nrow(part2)>3){ #constrain model to run only when 4 or more points are present
-      fit1<-rickerfit(part1) #fit the model to part 1
-      fit2<-rickerfit(part2) #fit the model to part 2
+      fit1<-gompertzfit(part1) #fit the model to part 1
+      fit2<-gompertzfit(part2) #fit the model to part 2
       breaks.1<-c(breaks, max(part1$year), max(part2$year)) #breaks for one break
       fit.1<-c(fit, fit1[1], fit2[1]) #fit for one break
       out[1]<-list(breaks.1)#create output vector of two lists
@@ -317,7 +317,7 @@ bestmodel<-function(data, criterion){
   breakvector<-unlist(modelspecs$Breaks[1])#pull out a vector of the max year in each fit
   
   if (length(breakvector)<=1){ #if there's no breaks
-    fit<-rickerfit(data)
+    fit<-gompertzfit(data)
     output<-c(min(data$year), max(data$year), fit) #fit whole data series + output results
     out.frame<-rbind(out.frame, output)
     
@@ -325,7 +325,7 @@ bestmodel<-function(data, criterion){
     for (i in 1:(length(breakvector))){ #for all breakpoints, including the end of the time series, in order
       part1<-data[which(data$year<breakvector[i]+1),] #create subsets at the breakpoint
       part2<-data[which(data$year>breakvector[i]),]
-      fit1<-rickerfit(part1) #fit first segment
+      fit1<-gompertzfit(part1) #fit first segment
       output<-c(min(part1$year), max(part1$year), fit1)#save results of fitting segment in vector
       out.frame<-rbind(out.frame, output)#put output for segment in a data frame
       data<-part2 #update data to cull out already fitted segments 
@@ -347,7 +347,7 @@ modelspecification<-function(specs, data){
   breakvector<-unlist(modelspecs$Breaks[1])#pull out a vector of the max year in each fit
   
   if (modelspecs$Nbreaks[1]==0){ #if there's no breaks
-    fit<-rickerfit(data)
+    fit<-gompertzfit(data)
     output<-c(min(data$year), max(data$year), fit) #fit whole data series + output results
     out.frame<-rbind(out.frame, output)
     
@@ -355,7 +355,7 @@ modelspecification<-function(specs, data){
     for (i in 1:(length(breakvector))){ #for all breakpoints, including the end of the time series, in order
       part1<-data[which(data$year<breakvector[i]+1),] #create subsets at the breakpoint
       part2<-data[which(data$year>breakvector[i]),]
-      fit1<-rickerfit(part1) #fit first segment
+      fit1<-gompertzfit(part1) #fit first segment
       output<-c(min(part1$year), max(part1$year), fit1)#save results of fitting segment in vector
       out.frame<-rbind(out.frame, output)#put output for segment in a data frame
       data<-part2 #update data to cull out already fitted segments 
