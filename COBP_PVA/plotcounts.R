@@ -18,15 +18,15 @@ theme_update(panel.grid.major = element_blank(), panel.grid.minor = element_blan
 
 
 # Input files ----
-census <- read.csv("data/creek.counts.csv", header = TRUE) %>% 
-  pivot_longer(cols = crow:unnamed, names_to = "creek", values_to = "count")
+census <- read.csv("./COBP_PVA/data/creek.counts.csv", header = TRUE) %>% 
+  pivot_longer(cols = CrowCreek:UnnamedCreek, names_to = "creek", values_to = "count")
 tots <- census %>% 
   group_by(year) %>% 
   summarise(creek = "total",
             count = sum(count, na.rm = FALSE))
 census <- bind_rows(census, tots)
-census$creek <- factor(census$creek, levels = c("total", "crow", "diamond", "unnamed"),
-                         labels = c("FEWAFB Total", "Crow creek", "Diamond creek", "Unnamed creek"))
+#census$creek <- factor(census$creek, levels = c("total", "crow", "diamond", "unnamed"),
+                         #labels = c("FEWAFB Total", "Crow creek", "Diamond creek", "Unnamed creek"))
 
 # Milestones of ESA timeline for plot annotations
 milestones <- data.frame(year = c(2000, 2005, 2011, 2019),
@@ -89,7 +89,7 @@ ggsave(plt3, filename = "plots/creekcounts_revised.png", device = "png", width =
 
 # Nonlinear trends with GAM ----
 
-plt1 <- ggplot(census %>% filter(creek == "FEWAFB Total"), aes(x = year, y = count, group = creek, color = creek)) +
+plt1 <- ggplot(census %>% filter(creek == "total"), aes(x = year, y = count, group = creek, color = creek)) +
   geom_smooth(method = "gam", se = FALSE, formula = y ~ s(x, bs = "cs", k = 10), 
               method.args = list(family = poisson(link = "log")),  alpha = .5) +
   scale_color_manual(name = NULL, values = "black") +
