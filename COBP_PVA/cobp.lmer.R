@@ -17,6 +17,7 @@ library(lubridate)
 library(cowplot)
 library(sjPlot)
 library(minpack.lm)
+library(Matrix)
 
 '%!in%' <- function(x,y)!('%in%'(x,y))
 theme_set(theme_bw(base_size = 14))
@@ -57,8 +58,8 @@ popdat <- census %>%
 # Ricker: K = -a/b
 # Gompertz: K = exp(-a/b)
 # basic model w/ no predictor 
-mod0 <- lmer(loglam ~ 1  + (1|segment) + (1|yearfact), 
-             data = popdat)
+mod0 <- lme4::lmer(loglam ~ 1 + (1|segment) + (1|yearfact), 
+            data = popdat, REML = FALSE)
 # Ricker model
 mod1 <- lmer(loglam ~ Nt1  + (1|segment) + (1|yearfact), 
             data = popdat)
@@ -543,7 +544,7 @@ mod2 <- lmer(yvar ~ logNt1  +
                zprec2 +
                zsnow +
                # zsnow2 +
-               pdsi +
+               #pdsi +
                (1 |segment) + (1|yearfact), 
              data = envdat)
 summary(mod2)
@@ -553,6 +554,9 @@ mod4 <- lmer(yvar ~ logNt1  +
                (1 |segment) + (1|yearfact), 
              data = envdat)
 summary(mod4)
+
+stargazer(mod4, mod2, type = "text", ci = TRUE, p.auto = TRUE, report = c("vcsp"))
+sjPlot::tab_model(mod4, mod2)
 
 # # other varying slopes lead to fitting problems or singular fit
 # # precip probably most important/robust anyways
@@ -671,16 +675,15 @@ outcreek <- list()
 for (sn in unique(scens$scenario)){
   for(sim in 1:nsim){
     
-    
     weather1 <- future_env %>% filter(decade == scens$Var1[which(scens$scenario == sn)])
     weather2 <- future_env %>% filter(decade == scens$Var2[which(scens$scenario == sn)])
     weather <- bind_rows(weather1, weather2) %>% 
       ungroup() %>% 
-      mutate(year = 2021:2040,
-             # year = sample(c(2021:2040), size = 20, replace = FALSE), # doesn't do autocorrelated years
+      mutate(#year = 2021:2040,
+              year = sample(c(2023:2040), size = (nrow(weather1) + nrow(weather2)), replace = FALSE), # doesn't do autocorrelated years
              sim = sim,
              scenario = sn,
-             annvar = rnorm(20, mean = 0, sd = .36)) %>% # from mod2 random intercept
+             annvar = rnorm((nrow(weather1) + nrow(weather2)), mean = 0, sd = .36)) %>% # from mod2 random intercept
       arrange(year)
     
     moddat <- expand_grid(weather, segment = unique(envdat$segment)) %>% 
@@ -689,14 +692,14 @@ for (sn in unique(scens$scenario)){
              loglam = NA)
     
     # setup counts from 2020
-    moddat$logNt1[moddat$year == 2021] <- log(segcounts$flower.count + 1)
+    moddat$logNt1[moddat$year == min(moddat$year)] <- log(segcounts$flower.count + 1)
     
     for (nr in 1:nrow(moddat)){
       moddat$loglam[nr] <- predict(mod2, newdata = moddat[nr,], re.form = ~(1|segment)) + moddat$annvar[nr] + rnorm(1, 0, 0.721) # from mod2 random intercept
       mu <- exp(moddat$logNt1[nr]) * exp(moddat$loglam[nr]) 
       moddat$flower.count[nr] <- rpois(n = 1, lambda = mu)
       try(moddat$logNt1[nr+13] <- log(moddat$flower.count[nr] + 1))
-    }
+    } # note: we do see error messages, but the code still runs b/c it's wrapped in a "try" 
     
     outseg[[length(outseg)+1]] <- moddat
   }
@@ -707,6 +710,8 @@ saveRDS(segs, "segpreds.rds")
 
 segs <- readRDS("segpreds.rds")
 
+## remove the "NA" flower count predictions from 'segs'??
+segs <- segs[!is.na(segs$flower.count),]
 creeks <- segs %>% 
   mutate(scenario = as.factor(scenario)) %>% 
   # mutate(scenario = case_when(scenario == 1 ~ "1990-1999",
@@ -714,9 +719,9 @@ creeks <- segs %>%
   #                             scenario %in% c(3, 7) ~ "1990-1999, 2010-2019",
   #                             scenario %in% c(6, 8) ~ "2000-2019",
   #                             scenario == 5 ~ "2000-2009",
-  #                             scenario == 9 ~ "2010-2019")) %>% 
+  #                             scenario == 9 ~ "2010-2019")) %>%
   ungroup() %>% 
-  mutate(creek = stringr::str_split_fixed(segment, pattern = "-", n = 2)[,1]) %>% 
+  mutate(creek = stringr::str_sub(segment, start = 0, end = 1)) %>% 
   group_by(creek, year, scenario, sim) %>% 
   summarise(flower.count = sum(flower.count)) %>% 
   group_by(creek, year, scenario) %>% 
@@ -732,12 +737,12 @@ all <- segs %>%
   #                             scenario %in% c(3, 7) ~ "1990-1999, 2010-2019",
   #                             scenario %in% c(6, 8) ~ "2000-2019",
   #                             scenario == 5 ~ "2000-2009",
-  #                             scenario == 9 ~ "2010-2019")) %>% 
-  ungroup() %>% 
+  #                             scenario == 9 ~ "2010-2019")) %>%
+  ungroup() %>%
   group_by(year, scenario, sim) %>% 
   summarise(flower.count = sum(flower.count)) %>% 
   group_by(year, scenario) %>% 
-  summarise(pred_median = quantile(flower.count, probs = .5),
+  summarise(pred_median = quantile(flower.count, probs = .5, na.rm = TRUE),
             pred_lo = quantile(flower.count, probs = .25),
             pred_hi = quantile(flower.count, probs = .75),
             pred_lower = quantile(flower.count, probs = .05),
@@ -749,50 +754,56 @@ creeks$creek <- factor(creeks$creek, levels = c("Total", "C", "D", "U"),
                        labels = c("Total", "Crow", "Diamond", "Unnamed"))
 
 # Figure 8 ----
-ggplot(creeks %>% filter(scenario %in% c("1", "5", "9")), 
+ggplot(creeks %>% filter(scenario %in% c("1", "6", "11", "16")), 
        aes(x = year, y = pred_median, group = scenario, color = scenario)) +
+  facet_wrap(~creek, ncol = 2, scales = "free") +
   geom_point() +
   geom_path() +
-  scale_colour_discrete(labels = c("1990s", "2000s", "2010s")) +
+  scale_colour_discrete(labels = c("1990-98", "1999-2006", "2007-15", "2016-23")) +
   # geom_smooth(method = "gam", se = FALSE) +
   geom_linerange(aes(x = year, ymin = pred_lo, ymax = pred_hi)) +
   scale_y_continuous(limits = c(0, NA)) +
-  facet_wrap(~creek, ncol = 2, scales = "free") +
   xlab("Year") +
   ylab("Forecasted flower count")
 
 
 total <- census %>% 
-  filter(year > 1987, segment %in% c("crow", "diamond", "unnamed")) %>%
+  filter(year > 1987, segment %in% c("CrowCreek", "DiamondCreek", "UnnamedCreek")) %>%
   group_by(year) %>%
   summarise(flower.count = sum(flower.count),
             segment = "total")
 census2 <- bind_rows(census, total) %>% 
-  filter(segment %in% c("crow", "diamond", "unnamed", "total")) %>% 
+  filter(segment %in% c("CrowCreek", "DiamondCreek", "UnnamedCreek", "total")) %>% 
   mutate(creek = as.character(segment),
          pred_median = flower.count) %>% 
   expand_grid(scens) %>% 
   mutate(scenario = as.factor(scenario)) %>% 
   select(-Var1, -Var2, -segment)
-creeks2 <- creeks %>% 
+creeks2 <- creeks %>%
   mutate(creek = tolower(as.character(creek)))
 census3 <- bind_rows(census2, creeks2) %>% 
-  filter(scenario %in% c("1", "5", "9"))
+  filter(scenario %in% c("1", "6", "11", "16"))
+# rename creeks 
+census3[census3$creek == "crow", "creek"] <- "CrowCreek"
+census3[census3$creek == "unnamed", "creek"] <- "UnnamedCreek"
+census3[census3$creek == "diamond", "creek"] <- "DiamondCreek"
 
 census3$creek <- factor(census3$creek)
 census3$creek <- relevel(census3$creek, ref = "total")
 
 census3 <- census3 %>% 
   mutate(scenario = as.character(scenario)) %>% 
-  mutate(scenario = case_when(year < 2021 ~ "observed",
+  mutate(scenario = case_when(year < 2024 ~ "observed",
                               TRUE ~ scenario))
 
 # Figure 9 ----
+census3$scenario <- factor(census3$scenario, levels = c(1, 6, 11, 16, "observed"))
+
 ggplot(census3, aes(x = year, y = pred_median, group = scenario, color = scenario)) +
   geom_point() +
   geom_path() +
   scale_y_continuous(limits = c(0, NA)) +
-  scale_colour_discrete(labels = c("1990s", "2000s", "2010s", "observed")) +
+  scale_colour_discrete(labels = c("1990-98", "1999-2006",  "2007-15", "2016-23", "Observed")) +
   # geom_linerange(aes(x = year, ymin = pred_lo, ymax = pred_hi)) +
   # geom_smooth(method = "gam", se = FALSE, formula = y ~ s(x, bs = "cs", k = 17),  alpha = .5) +  
   facet_wrap(~creek, ncol = 2, scales = "free") +
@@ -821,24 +832,24 @@ creeks <- segs %>%
 
 segsumm <- segs %>% 
   mutate(scenario = as.factor(scenario)) %>% 
-  filter(scenario %in% c("1", "5", "9")) %>% 
+  filter(scenario %in% c("1", "6", "11", "16")) %>% 
   group_by(segment, scenario) %>% 
   summarise(count_median = quantile(flower.count, probs = .5),
             count_lo = quantile(flower.count, probs = .25),
             count_hi = quantile(flower.count, probs = .75),
             count_lower = quantile(flower.count, probs = .05),
             count_higher = quantile(flower.count, probs = .95))
-segsumm$scenario <- factor(segsumm$scenario, labels = c("1990s", "2000s", "2010s"))
+segsumm$scenario <- factor(segsumm$scenario, labels = c("1990-98","1999-2006", "2007-15", "2016-23"))
 
 obssumm <- census %>% 
-  filter(segment %!in% c("crow", "diamond", "unnamed")) %>% 
+  filter(segment %!in% c("CrowCreek", "DiamondCreek", "UnnamedCreek")) %>% 
   group_by(segment) %>% 
   summarise(scenario = "observed",
             count_median = quantile(flower.count, probs = .5),
             count_lo = quantile(flower.count, probs = .25),
             count_hi = quantile(flower.count, probs = .75),
             count_lower = quantile(flower.count, probs = .05),
-            count_higher = quantile(flower.count, probs = .95))
+            count_higher = quantile(flower.count, probs = .95)) 
 
 segsumm2 <- bind_rows(segsumm, obssumm)
 
@@ -847,18 +858,24 @@ probs <- obssumm %>%
   rename_at(vars(count_median:count_higher), toupper) %>% 
   select(-scenario) %>% 
   left_join(segsumm) %>% 
-  mutate(percmed = paste0(round(100 * count_median / COUNT_MEDIAN), "%"))
+  mutate(percmed = paste0(round(100 * count_median / COUNT_MEDIAN), "%")) %>% 
+  filter(!is.na(scenario))
 
 # Figure 11 ----
 #total range of flower.counts by segments
-ggplot(segsumm2, aes(x = segment, y = count_median, group = scenario, color = scenario)) +
+fig11 <- ggplot(segsumm2, aes(x = segment, y = count_median, group = scenario, color = scenario)) +
   geom_point(position = position_dodge(width = .7), size = 2) +
   geom_linerange(aes(ymin = count_lo, ymax = count_hi), inherit.aes = TRUE, size = 2, position = position_dodge(width = .7)) +
   geom_linerange(aes(ymin = count_lower, ymax = count_higher), inherit.aes = TRUE, size = 1, position = position_dodge(width = .7)) +
   geom_text(probs, mapping = aes(x = segment, y = -500, group = scenario, color = scenario, label = percmed), 
             inherit.aes = TRUE, position = position_dodge(width = .7), size = 3) +
   ylab("Distribution of flower counts (Median, 50%, 95%)") +
-  coord_flip()  
+  coord_flip()  #+
+  #scale_colour_discrete(labels = c("1990-98", "1999-2006",  "2007-15", "2016-23", "Observed")) 
+
+pdf(file = "./COBP_PVA/report_fig11.pdf", width = 8, height = 9.5)  
+fig11
+dev.off()
 
 #annual segment forecasts
 ggplot(creeks %>% filter(scenario %in% c("1", "5", "9")), aes(x = year, y = pred_median, group = scenario, color = scenario)) +
@@ -876,12 +893,12 @@ ggplot(creeks %>% filter(scenario %in% c("1", "5", "9")), aes(x = year, y = pred
 # same but for creek level
 
 total <- census %>% 
-  filter(year > 1987, segment %in% c("crow", "diamond", "unnamed")) %>%
+  filter(year > 1987, segment %in% c("CrowCreek", "DiamondCreek", "UnnamedCreek")) %>%
   group_by(year) %>%
   summarise(flower.count = sum(flower.count),
-            segment = "total")
+            segment = "Total")
 censumm <- census %>% 
-  filter(year > 1987, segment %in% c("crow", "diamond", "unnamed")) %>%
+  filter(year > 1987, segment %in% c("CrowCreek", "DiamondCreek", "UnnamedCreek")) %>%
   bind_rows(total) %>% 
   group_by(segment) %>% 
   summarise(scenario = "observed",
@@ -896,7 +913,7 @@ censumm <- census %>%
 creeks <- segs %>% 
   mutate(scenario = as.factor(scenario)) %>% 
   ungroup() %>% 
-  mutate(creek = stringr::str_split_fixed(segment, pattern = "-", n = 2)[,1]) %>% 
+  mutate(creek =stringr::str_sub(segment, start = 0, end = 1)) %>% 
   group_by(year, creek, scenario, sim) %>% 
   summarise(flower.count = sum(flower.count)) %>% 
   group_by(creek, scenario) %>% 
@@ -920,12 +937,12 @@ all <- segs %>%
 creeks <- bind_rows(creeks, all)
 
 creeks$creek <- factor(creeks$creek, levels = c("Total", "C", "D", "U"),
-                       labels = c("Total", "Crow", "Diamond", "Unnamed"))
+                       labels = c("Total", "CrowCreek", "DiamondCreek", "UnnamedCreek"))
 segsumm2 <- creeks %>% 
   ungroup() %>% 
-  mutate(creek = tolower(as.character(creek))) %>% 
+  #mutate(creek = tolower(as.character(creek))) %>% 
   bind_rows(censumm) %>% 
-  filter(scenario %in% c("observed", "1", "5", "9"))
+  filter(scenario %in% c("observed", "1", "6", "11", "16"))
 
 # likelihood below threshold?
 probs <- censumm %>% 
@@ -933,14 +950,16 @@ probs <- censumm %>%
   select(-scenario) %>% 
   left_join(segsumm2, by = "creek") %>% 
   mutate(percmed = paste0(round(100 * pred_median / PRED_MEDIAN), "%")) %>% 
-  filter(scenario %in% c("1", "5", "9")) %>% 
-  bind_rows(data.frame(creek = c("crow", "diamond", "total", "unnamed"),
+  filter(scenario %in% c("1", "6", "11", "16")) %>% 
+  bind_rows(data.frame(creek = c("CrowCreek", "DiamondCreek", "Total", "UnnamedCreek"),
                        scenario = "observed",
                        percmed = ""))
 
 segsumm2$creek <- factor(segsumm2$creek)
-segsumm2$creek <- relevel(segsumm2$creek, ref = "total")
+segsumm2$creek <- relevel(segsumm2$creek, ref = "Total")
 
+segsumm2$scenario <- factor(segsumm2$scenario, labels = c("1990-98", "1999-2006", "2007-15", "2016-23", "observed"))
+probs$scenario <- factor(probs$scenario, labels = c("1990-98", "1999-2006", "2007-15", "2016-23", "observed"))
 # Figure 10 ----
 # total range of flower.counts by segments
 ggplot(segsumm2, aes(x = creek, y = pred_median, group = scenario, color = scenario)) +
@@ -949,7 +968,7 @@ ggplot(segsumm2, aes(x = creek, y = pred_median, group = scenario, color = scena
   geom_linerange(aes(ymin = pred_lower, ymax = pred_higher), inherit.aes = TRUE, size = 1, position = position_dodge(width = .5)) +
   geom_text(probs, mapping = aes(x = creek, y = -1000, group = scenario, color = scenario, label = percmed), 
             inherit.aes = TRUE, position = position_dodge(width = .5), size = 3) +
-  scale_colour_discrete(labels = c("1990s", "2000s", "2010s", "observed")) +
+  #scale_colour_discrete(labels = c("1990s", "2000s", "2010s", "observed")) +
   ylab("Distribution of flower counts (Median, 50%, 95%)") +
   coord_flip()  
 
