@@ -104,7 +104,7 @@ plt1 <- ggplot(census %>% filter(creek == "total"), aes(x = year, y = count, gro
 
 plt1
 
-plt2 <- ggplot(census %>% filter(creek != "FEWAFB Total") %>% droplevels(), aes(x = year, y = count, group = creek, color = creek)) +
+plt2 <- ggplot(census %>% filter(creek != "total") %>% droplevels(), aes(x = year, y = count, group = creek, color = creek)) +
   geom_smooth(method = "gam", se = FALSE, formula = y ~ s(x, bs = "cs", k = 10), 
               method.args = list(family = poisson(link = "log")),  alpha = .5) +
   scale_color_brewer(name = NULL, palette = "Dark2") +
@@ -120,7 +120,7 @@ plt2
 plt3 <- ggarrange(plt1, plt2, nrow = 2, ncol = 1, heights = c(1, 1), labels = c('A', 'B'))
 plt3
 
-ggsave(plt3, filename = "plots/creekcounts_revised.png", device = "png", width = 7, height = 10, units = "in")
+ggsave(plt3, filename = "./COBP_PVA/plots/creekcounts_revised.png", device = "png", width = 7, height = 10, units = "in")
 
 
 
