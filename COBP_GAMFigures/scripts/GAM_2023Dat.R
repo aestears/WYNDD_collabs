@@ -31,7 +31,7 @@ library(mgcv)
 
 # Load data ---------------------------------------------------------------
 ## load creek-level data
-dat_creeks <- read_excel("./COBP_GAMFigures/data/COBP_wafb_2023.xlsx", sheet =1) %>% 
+dat_creeks <- read_excel("~/Documents/Dropbox_static/Work/collab_papers/WYNDD_collabs/COBP_GAMFigures/data/COBP_wafb_2023.xlsx", sheet =1) %>% 
   rename(`Crow Creek` = `Crow Cr`, `Diamond Creek` = `Diamond Cr`, `Unnamed Creek` = `Unnamed Cr`, Total =  `WAFB (Total)`, Notes =  ...6 ) %>% 
   filter(Year != "Average") %>% 
   mutate(CrowCreek = as.integer(`Crow Creek`),
@@ -58,7 +58,7 @@ dat_creeks <- dat_creeks[dat_creeks$Creek != "Total",]
 dat_creeks <- dat_creeks[!is.na(dat_creeks$popSize),]
 
 ## load creek segment-level data
-dat_seg <- read_excel("./COBP_GAMFigures/data/COBP_wafb_2023.xlsx", sheet =2)
+dat_seg <- read_excel("~/Documents/Dropbox_static/Work/collab_papers/WYNDD_collabs/COBP_GAMFigures/data/COBP_wafb_2023.xlsx", sheet =2)
 names(dat_seg) <- c("Segment", paste(1989:2023)) 
 dat_seg <- dat_seg %>% 
   pivot_longer(cols = paste(1989:2023), 
@@ -565,7 +565,7 @@ allCreeks_figure <- ggplot() +
   
 # save to file
 ggsave(filename = "allCreeks_GAM_figure.pdf", plot = allCreeks_figure, 
-       device = "pdf", path = "./COBP_GAMFigures/COBP_GAMFigures_2023/",
+       device = "pdf", path = "~/Documents/Dropbox_static/Work/collab_papers/WYNDD_collabs/COBP_GAMFigures/COBP_GAMFigures_2023/",
        height = 3, width = 6)
 
 
@@ -625,7 +625,7 @@ byCreeks_partFig <- ggplot(data = preds[preds$Creek != "All Creeks",]) +
  
   # save figure
   ggsave(filename = "allDat_byCreeks_GAM_figure.pdf", plot =  allCreekByCreek_Fig, 
-         device = "pdf", path = "./COBP_GAMFigures/COBP_GAMFigures_2023/",
+         device = "pdf", path = "~/Documents/Dropbox_static/Work/collab_papers/WYNDD_collabs/COBP_GAMFigures/COBP_GAMFigures_2023/",
          height = 7, width = 6)
   
    # Segment-level figures ---------------------------------------------------
@@ -748,7 +748,7 @@ bySegment_figure <-
   
 # save to file
 ggsave(filename = "bySegment_GAM_figure.pdf", plot = bySegment_figure, 
-       device = "pdf", path = "./COBP_GAMFigures/COBP_GAMFigures_2023/",
+       device = "pdf", path = "~/Documents/Dropbox_static/Work/collab_papers/WYNDD_collabs/COBP_GAMFigures/COBP_GAMFigures_2023/",
        height = 8, width = 8)
 
 
@@ -757,7 +757,7 @@ ggsave(filename = "bySegment_GAM_figure.pdf", plot = bySegment_figure,
 # data: population = dat_all; creek = dat_creek
 # for the entire population
 lambda_all <- dat_all %>% 
-  mutate(popSize_tMinus1 = lag(dat_all$popSize,k = 1),
+  mutate(popSize_tMinus1 = stats::lag(dat_all$popSize,k = 1),
          lambda = popSize/popSize_tMinus1,
          logLam = log(lambda)) %>% 
   mutate(Creek = "All Creeks")
@@ -771,7 +771,7 @@ temp <- dat_creeks %>%
             UnnamedCreek_tplus1 = mean(UnnamedCreek)) 
 
 lambda_creek <- temp %>% 
-  lag(k=1) %>% 
+  lag() %>% 
   bind_cols(temp) %>%
   dplyr::select(2:8) %>% 
   rename("CrowCreek_tplus1" = "CrowCreek_tplus1...2", 
@@ -826,5 +826,6 @@ ggplot() +
 lambdaPlots <- cowplot::plot_grid(allLam_plot, creekLam_plot, ncol = 1, rel_heights = c(.25,.75))
 # save to file
 ggsave(filename = "logLambda_figure.pdf", plot = lambdaPlots, 
-       device = "pdf", path = "./COBP_GAMFigures/COBP_GAMFigures_2023/",
+       device = "pdf", path = "~/Documents/Dropbox_static/Work/collab_papers/WYNDD_collabs/COBP_GAMFigures/COBP_GAMFigures_2023/",
        height =6, width = 5)
+
